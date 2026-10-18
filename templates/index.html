@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gate 3 — банковский AI-ассистент</title>
+  <style>
+    :root { --ink:#152033; --muted:#66738a; --bg:#f5f7fa; --line:#e4e9f0; --yellow:#ffe15b; --blue:#335ed8; --green:#258166; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+    header { background:#fff; border-bottom:1px solid var(--line); padding:18px 32px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:800; font-size:20px; }
+    .brand .logo { display:grid; place-items:center; background:var(--yellow); width:38px; height:38px; border-radius:12px; flex:none; }
+    .brand .sub { color:var(--muted); font-size:13px; font-weight:500; }
+    .badge { font-size:12px; color:#704f00; background:#fff3b9; border-radius:99px; padding:7px 12px; font-weight:700; }
+    main { display:grid; grid-template-columns:minmax(340px,1.1fr) minmax(320px,.9fr); gap:22px; max-width:1360px; margin:26px auto; padding:0 22px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:0 8px 28px #243b6020; overflow:hidden; }
+    .head { padding:22px 24px; border-bottom:1px solid var(--line); }
+    h1 { font-size:24px; margin:0 0 6px; line-height:1.25; }
+    h2 { font-size:17px; margin:0 0 4px; }
+    p { margin:0; }
+    .muted { color:var(--muted); }
+    .chat { min-height:390px; max-height:56vh; overflow:auto; padding:22px; display:flex; flex-direction:column; gap:14px; background:linear-gradient(#fff,#fbfcff); }
+    .bubble { max-width:82%; padding:13px 16px; border-radius:16px; white-space:pre-wrap; }
+    .user { align-self:flex-end; background:#ffed9c; border-bottom-right-radius:5px; }
+    .assistant { align-self:flex-start; background:#edf2fb; border-bottom-left-radius:5px; }
+    .meta { align-self:flex-start; font-size:12px; color:var(--muted); margin-top:-7px; }
+    .choices { align-self:flex-start; display:flex; flex-wrap:wrap; gap:7px; max-width:85%; }
+    .choice { border:1px solid #b9c9ed; color:#214caa; background:#f8faff; border-radius:10px; padding:8px 11px; font:inherit; font-size:13px; cursor:pointer; }
+    .samples { padding:0 22px 14px; display:flex; gap:7px; flex-wrap:wrap; }
+    button.sample { border:1px solid var(--line); background:#fff; border-radius:99px; padding:7px 10px; color:#46536b; cursor:pointer; font-size:12px; }
+    .composer { display:flex; padding:14px 20px 20px; gap:10px; }
+    input { flex:1; min-width:0; border:1px solid #cbd4e2; border-radius:12px; padding:13px 14px; font:inherit; }
+    button.send { border:0; background:var(--yellow); color:#171819; border-radius:12px; padding:0 20px; font-weight:800; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .panel { padding:22px 24px; }
+    .step { display:flex; align-items:flex-start; gap:11px; padding:10px 0; border-bottom:1px solid var(--line); }
+    .dot { flex:none; width:24px; height:24px; border-radius:50%; background:#eef1f7; display:grid; place-items:center; color:#516077; font-size:12px; font-weight:800; }
+    .step strong { display:block; }
+    .status { display:inline-block; font-size:12px; font-weight:800; border-radius:99px; padding:4px 9px; margin:8px 0; background:#e8f6ef; color:var(--green); }
+    .status.copilot { background:#eaf0ff; color:var(--blue); }
+    .status.clarify { background:#fff3c6; color:#765800; }
+    .explain { background:#f6f8fb; border-radius:12px; padding:14px; margin-top:12px; font-size:13px; overflow-wrap:anywhere; }
+    .explain b { color:#263b62; }
+    .operator-card { border:1px solid #cbd8f7; border-radius:14px; margin-top:16px; padding:16px; background:#f8faff; }
+    .operator-card h3 { margin:0 0 10px; font-size:16px; }
+    .operator-row { padding:8px 0; border-bottom:1px solid #e0e8f7; overflow-wrap:anywhere; }
+    .operator-row:last-child { border-bottom:0; }
+    .operator-row strong { display:block; color:#263b62; font-size:12px; }
+    .operator-card textarea { display:block; width:100%; min-height:98px; margin-top:7px; padding:10px; border:1px solid #c5d2ec; border-radius:10px; background:#fff; resize:vertical; font:inherit; font-size:13px; }
+    .copy-draft { margin-top:9px; padding:8px 12px; border:0; border-radius:9px; background:#335ed8; color:#fff; cursor:pointer; }
+    .note { font-size:12px; color:var(--muted); margin-top:14px; }
+    footer { max-width:1360px; margin:0 auto 24px; padding:0 24px; color:#7b8798; font-size:12px; }
+    @media(max-width:800px) { main { grid-template-columns:1fr; } header { padding:14px 20px; } .badge { display:none; } }
+  </style>
+</head>
+<body>
+  <header><div class="brand"><span class="logo">Д</span> Демо-банк <span class="sub">AI-поддержка · Gate 3</span></div><div class="badge">Учебный прототип · без реальных данных</div></header>
+  <main>
+    <section class="card">
+      <div class="head"><h1>Напишите вопрос банку</h1><p class="muted" id="availability">Русский и английский учебные маршруты работают локально. Если настроен удалённый Qwen, он уточняет и готовит черновик. Не вводите реальные данные карты и счёта.</p></div>
+      <div class="chat" id="chat"><div class="bubble assistant">Здравствуйте! Я помогу разобраться с вопросом, уточню детали или подготовлю контекст для сотрудника.</div></div>
+      <div class="samples">
+        <button class="sample" data-query="Сколько идёт доставка карты?">Доставка карты</button>
+        <button class="sample" data-query="Где мой платёж?">Где мой платёж?</button>
+        <button class="sample" data-query="Какой статус у моей карты?">Статус карты</button>
+        <button class="sample" data-query="Какая у меня комиссия?">Комиссия</button>
+        <button class="sample" data-query="Демо: покажи тестовый статус карты">Тестовый статус карты</button>
+        <button class="sample" data-query="Я не узнаю это списание">Спорное списание</button>
+      </div>
+      <form class="composer" id="form"><input id="query" aria-label="Вопрос" placeholder="Например: Где мой платёж?" autocomplete="off"><button class="send" id="send">Отправить</button></form>
+    </section>
+    <section class="card">
+      <div class="head"><h2>Что происходит с обращением</h2><p class="muted">Панель показывает тему, маршрут и происхождение ответа.</p></div>
+      <div class="panel" id="panel">
+        <div class="step"><div class="dot">1</div><div><strong>Понять вопрос</strong><span class="muted">Локальные модели определяют учебные темы; Qwen подключается при наличии ключа.</span></div></div>
+        <div class="step"><div class="dot">2</div><div><strong>Выбрать действие</strong><span class="muted">Ответить из источника, уточнить вопрос или подготовить контекст для сотрудника.</span></div></div>
+        <div class="step"><div class="dot">3</div><div><strong>Показать источник</strong><span class="muted">Вымышленные условия Демо-банка явно помечаются.</span></div></div>
+        <p class="note">Используется синтетическая база знаний. Ответы не являются банковской консультацией.</p>
+      </div>
+    </section>
+  </main>
+  <footer>Прототип для ДЗ #3. Banking77: PolyAI, CC BY 4.0. Нет подключения к банку, переводов денег, реальных операторов и хранения истории на сервере.</footer>
+  <script>
+    const chat=document.getElementById('chat'), panel=document.getElementById('panel'), form=document.getElementById('form'), input=document.getElementById('query'), send=document.getElementById('send');
+    const history=[];
+    let busy=false, activeChoices=null;
+    function bubble(text,kind){ const div=document.createElement('div'); div.className='bubble '+kind; div.textContent=text; chat.append(div); chat.scrollTop=chat.scrollHeight; }
+    function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function display(r){
+      let mode=r.mode==='autopilot'?'Autopilot · учебный источник':r.mode==='personal_demo'?'Тестовый read-only':r.mode==='clarify'?'Уточнение':'Copilot · демо передачи';
+      let cls=r.mode==='copilot'?'copilot':r.mode==='clarify'?'clarify':'';
+      let html=`<span class="status ${cls}">${mode}</span>`;
+      html+=`<div class="step"><div class="dot">1</div><div><strong>Тема</strong>${esc(r.intent||'не определялась')} ${r.confidence!==null&&r.confidence!==undefined?'· уверенность локального классификатора '+Math.round(r.confidence*100)+'%':''}</div></div>`;
+      html+=`<div class="step"><div class="dot">2</div><div><strong>Маршрут</strong>${esc(r.reason||'Проверенный сценарий с достаточной уверенностью')}</div></div>`;
+      if(r.article) html+=`<div class="explain"><b>Источник ответа:</b> ${esc(r.article.id)} · ${esc(r.article.title)}<br>${esc(r.article.source)} · с ${esc(r.article.valid_from)}</div>`;
+      if(r.operator_summary) html+=`<div class="operator-card"><h3>Рабочее место сотрудника · демонстрация</h3><div class="operator-row"><strong>История обращения</strong>${esc(r.operator_summary)}</div><div class="operator-row"><strong>Рекомендация</strong>Проверить обстоятельства и данные в банковской системе до ответа клиенту.</div><div class="operator-row"><strong>Источники и данные клиента</strong>Подтверждённого источника и доступа к CRM в прототипе нет.</div><div class="operator-row"><strong>${esc(r.draft_source||'Черновик для проверки')}</strong><textarea id="operator-draft" aria-label="Редактируемый черновик сотрудника">${esc(r.operator_draft)}</textarea><button class="copy-draft" id="copy-draft" type="button">Скопировать черновик</button></div></div>`;
+      html+=`<p class="note">${esc(r.note)}</p>`;panel.innerHTML=html;
+      const copy=document.getElementById('copy-draft');
+      if(copy) copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(document.getElementById('operator-draft').value);copy.textContent='Скопировано';}catch{copy.textContent='Выделите текст и скопируйте вручную';}});
+    }
+    function showChoices(choices){
+      if(!Array.isArray(choices)||!choices.length)return;
+      const box=document.createElement('div');box.className='choices';
+      choices.forEach(choice=>{const button=document.createElement('button');button.type='button';button.className='choice';button.textContent=choice;button.addEventListener('click',()=>ask(choice));box.append(button);});
+      chat.append(box);chat.scrollTop=chat.scrollHeight;activeChoices=box;
+    }
+    async function ask(q){ q=q.trim();if(!q||busy)return; busy=true; input.value='';send.disabled=true;
+      if(activeChoices){activeChoices.querySelectorAll('button').forEach(button=>button.disabled=true);activeChoices=null;}
+      bubble(q,'user');
+      try {const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,history:history.slice(-3)})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||'Ошибка');bubble(data.answer,'assistant');showChoices(data.clarifying_choices);display(data);history.push({text:q});
+      } catch(e){bubble('Не удалось обработать запрос: '+e.message,'assistant');} finally {busy=false;send.disabled=false;input.focus();}
+    }
+    form.addEventListener('submit',e=>{e.preventDefault();ask(input.value)});
+    document.querySelectorAll('.sample').forEach(el=>el.addEventListener('click',()=>ask(el.dataset.query)));
+    fetch('/api/health').then(r=>r.json()).then(data=>{
+      if(!data.remote_enabled) document.getElementById('availability').textContent='Русский и английский маршруты работают локально. Без ключа Qwen не генерирует уточнения и черновики; ответы берутся только из учебной базы. Не вводите реальные данные карты и счёта.';
+    }).catch(()=>{});
+  </script>
+</body>
+</html>
