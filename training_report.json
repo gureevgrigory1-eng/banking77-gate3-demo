@@ -1,0 +1,8 @@
+{
+  "train_split": 8002,
+  "validation_split": 2001,
+  "validation_accuracy": 0.9055472263868066,
+  "validation_macro_f1": 0.9071862814588307,
+  "autopilot_threshold": 0.5,
+  "personal_threshold": 0.7
+}

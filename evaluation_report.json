@@ -1,0 +1,136 @@
+{
+  "dataset": {
+    "train": 10003,
+    "test": 3080,
+    "intents": 77,
+    "language": "English"
+  },
+  "classifier": {
+    "accuracy": 0.9048701298701298,
+    "macro_f1": 0.9050986682553539
+  },
+  "autopilot": {
+    "safe_intents": [
+      "card_acceptance",
+      "card_delivery_estimate",
+      "exchange_rate",
+      "transfer_timing",
+      "visa_or_mastercard"
+    ],
+    "threshold": 0.5,
+    "eligible_test_queries": 200,
+    "routed_queries": 172,
+    "correct_intent_queries": 165,
+    "routing_precision": 0.9593023255813954,
+    "eligible_coverage": 0.825,
+    "all_test_coverage": 0.05584415584415584
+  },
+  "risk": {
+    "risk_intents": [
+      "cancel_transfer",
+      "card_payment_not_recognised",
+      "cash_withdrawal_not_recognised",
+      "compromised_card",
+      "direct_debit_payment_not_recognised",
+      "lost_or_stolen_card",
+      "lost_or_stolen_phone",
+      "passcode_forgotten",
+      "pin_blocked",
+      "request_refund",
+      "terminate_account",
+      "transaction_charged_twice"
+    ],
+    "test_queries": 480,
+    "incorrectly_automated": 0,
+    "risk_recall": 1.0
+  },
+  "keyword_baseline": {
+    "routed_queries": 502,
+    "correct_intent_queries": 145,
+    "routing_precision": 0.28884462151394424,
+    "eligible_coverage": 0.725
+  },
+  "latency_local_ms": {
+    "median": 0.5678955021721777,
+    "p95": 0.7229999973787926,
+    "max": 0.992374996712897,
+    "sample": 200
+  },
+  "manual_probes": [
+    {
+      "query": "How long will my bank transfer take?",
+      "expected_group": "safe",
+      "mode": "clarify"
+    },
+    {
+      "query": "How long does it take to deliver a new card?",
+      "expected_group": "safe",
+      "mode": "autopilot"
+    },
+    {
+      "query": "Where can I use my card?",
+      "expected_group": "safe",
+      "mode": "autopilot"
+    },
+    {
+      "query": "What's the current exchange rate?",
+      "expected_group": "safe",
+      "mode": "autopilot"
+    },
+    {
+      "query": "Do you issue Visa or Mastercard?",
+      "expected_group": "safe",
+      "mode": "autopilot"
+    },
+    {
+      "query": "My card was stolen",
+      "expected_group": "risk",
+      "mode": "copilot"
+    },
+    {
+      "query": "I don't recognise this card payment",
+      "expected_group": "risk",
+      "mode": "copilot"
+    },
+    {
+      "query": "Please transfer money to this account",
+      "expected_group": "risk",
+      "mode": "copilot"
+    },
+    {
+      "query": "My card is blocked and I suspect fraud",
+      "expected_group": "risk",
+      "mode": "copilot"
+    },
+    {
+      "query": "What is the weather in Moscow?",
+      "expected_group": "out_of_scope",
+      "mode": "clarify"
+    },
+    {
+      "query": "Где мой перевод?",
+      "expected_group": "russian_clarification_without_api",
+      "mode": "clarify"
+    },
+    {
+      "query": "Где мой платёж?",
+      "expected_group": "russian_clarification_without_api",
+      "mode": "clarify"
+    },
+    {
+      "query": "My card hasn't arrived yet.",
+      "expected_group": "personal_clarification",
+      "mode": "clarify"
+    },
+    {
+      "query": "Демо: покажи тестовый статус карты",
+      "expected_group": "personal_demo",
+      "mode": "personal_demo"
+    },
+    {
+      "query": "Why is my card not here yet?",
+      "expected_group": "ambiguous_personal",
+      "mode": "clarify"
+    }
+  ]
+}

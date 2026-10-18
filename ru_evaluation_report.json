@@ -1,0 +1,205 @@
+{
+  "source": "Synthetic Russian paraphrases authored for this coursework; not translated Banking77",
+  "train_examples": 120,
+  "held_out_examples": 30,
+  "classes": [
+    "card_acceptance",
+    "card_delivery_estimate",
+    "exchange_rate",
+    "other",
+    "personal_card",
+    "personal_fee",
+    "personal_payment",
+    "risk",
+    "transfer_timing",
+    "visa_or_mastercard"
+  ],
+  "threshold": 0.7,
+  "held_out_accuracy": 0.8,
+  "held_out_macro_f1": 0.7954761904761904,
+  "auto_answers": 5,
+  "auto_correct_intent": 5,
+  "risk_auto_answers": 0,
+  "examples": [
+    {
+      "query": "За какое время доставите выпущенную карточку?",
+      "expected": "card_delivery_estimate",
+      "predicted": "transfer_timing",
+      "confidence": 0.304
+    },
+    {
+      "query": "Обычно долго везут новую дебетовую карту?",
+      "expected": "card_delivery_estimate",
+      "predicted": "card_delivery_estimate",
+      "confidence": 0.717
+    },
+    {
+      "query": "Срок получения пластика после заявки какой?",
+      "expected": "card_delivery_estimate",
+      "predicted": "card_delivery_estimate",
+      "confidence": 0.564
+    },
+    {
+      "query": "Через сколько времени получатель увидит банковский перевод?",
+      "expected": "transfer_timing",
+      "predicted": "transfer_timing",
+      "confidence": 0.824
+    },
+    {
+      "query": "Сколько идут деньги в другой банк по реквизитам?",
+      "expected": "transfer_timing",
+      "predicted": "transfer_timing",
+      "confidence": 0.463
+    },
+    {
+      "query": "Когда происходит зачисление отправленных средств?",
+      "expected": "transfer_timing",
+      "predicted": "transfer_timing",
+      "confidence": 0.277
+    },
+    {
+      "query": "Где узнать сегодняшний курс евро к рублю?",
+      "expected": "exchange_rate",
+      "predicted": "exchange_rate",
+      "confidence": 0.736
+    },
+    {
+      "query": "По какому курсу банк конвертирует доллары?",
+      "expected": "exchange_rate",
+      "predicted": "exchange_rate",
+      "confidence": 0.677
+    },
+    {
+      "query": "Покажите стоимость обмена рублей на валюту.",
+      "expected": "exchange_rate",
+      "predicted": "exchange_rate",
+      "confidence": 0.573
+    },
+    {
+      "query": "Могу ли я рассчитаться вашей картой в магазине?",
+      "expected": "card_acceptance",
+      "predicted": "card_acceptance",
+      "confidence": 0.463
+    },
+    {
+      "query": "Подойдёт ли карта для интернет-покупок?",
+      "expected": "card_acceptance",
+      "predicted": "card_acceptance",
+      "confidence": 0.703
+    },
+    {
+      "query": "За рубежом можно платить вашей картой?",
+      "expected": "card_acceptance",
+      "predicted": "card_acceptance",
+      "confidence": 0.684
+    },
+    {
+      "query": "У вас оформляют Визу либо Мастеркард?",
+      "expected": "visa_or_mastercard",
+      "predicted": "visa_or_mastercard",
+      "confidence": 0.645
+    },
+    {
+      "query": "Какую международную платёжную систему поддерживает карточка?",
+      "expected": "visa_or_mastercard",
+      "predicted": "visa_or_mastercard",
+      "confidence": 0.202
+    },
+    {
+      "query": "Возможно выпустить Mastercard?",
+      "expected": "visa_or_mastercard",
+      "predicted": "visa_or_mastercard",
+      "confidence": 0.746
+    },
+    {
+      "query": "Мой вчерашний перевод уже дошёл адресату?",
+      "expected": "personal_payment",
+      "predicted": "transfer_timing",
+      "confidence": 0.463
+    },
+    {
+      "query": "Что происходит с оплатой моего заказа?",
+      "expected": "personal_payment",
+      "predicted": "personal_payment",
+      "confidence": 0.337
+    },
+    {
+      "query": "Проверьте, прошла ли моя транзакция.",
+      "expected": "personal_payment",
+      "predicted": "personal_payment",
+      "confidence": 0.376
+    },
+    {
+      "query": "Мою карту уже доставили?",
+      "expected": "personal_card",
+      "predicted": "personal_card",
+      "confidence": 0.711
+    },
+    {
+      "query": "Проверьте, действует ли моя карточка.",
+      "expected": "personal_card",
+      "predicted": "personal_card",
+      "confidence": 0.252
+    },
+    {
+      "query": "Статус заказанного мной пластика подскажете?",
+      "expected": "personal_card",
+      "predicted": "personal_payment",
+      "confidence": 0.273
+    },
+    {
+      "query": "С меня сколько возьмут за этот перевод?",
+      "expected": "personal_fee",
+      "predicted": "personal_fee",
+      "confidence": 0.483
+    },
+    {
+      "query": "По моему тарифу списание комиссии верное?",
+      "expected": "personal_fee",
+      "predicted": "personal_fee",
+      "confidence": 0.665
+    },
+    {
+      "query": "Плата за обслуживание моей карты какая?",
+      "expected": "personal_fee",
+      "predicted": "personal_fee",
+      "confidence": 0.698
+    },
+    {
+      "query": "Я вижу покупку, которую точно не делал.",
+      "expected": "risk",
+      "predicted": "risk",
+      "confidence": 0.479
+    },
+    {
+      "query": "Мошенник получил доступ к моему телефону.",
+      "expected": "risk",
+      "predicted": "risk",
+      "confidence": 0.64
+    },
+    {
+      "query": "Мою банковскую карту похитили.",
+      "expected": "risk",
+      "predicted": "personal_card",
+      "confidence": 0.212
+    },
+    {
+      "query": "Какая ставка по накопительному счёту?",
+      "expected": "other",
+      "predicted": "risk",
+      "confidence": 0.209
+    },
+    {
+      "query": "Нужен адрес ближайшего офиса.",
+      "expected": "other",
+      "predicted": "other",
+      "confidence": 0.38
+    },
+    {
+      "query": "Помогите настроить уведомления в приложении.",
+      "expected": "other",
+      "predicted": "risk",
+      "confidence": 0.419
+    }
+  ]
+}
