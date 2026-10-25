@@ -43,7 +43,7 @@ def index():
 @app.get("/api/health")
 def health():
     return jsonify({
-        "status": "ok", "model": "Banking77 English + synthetic Russian classifier; Qwen when configured",
+        "status": "ok", "model": "Banking77 English + synthetic Russian classifier; remote triage when configured",
         "remote_enabled": prototype.remote.available,
         "remote_provider": prototype.remote.provider if prototype.remote.available else None,
         "russian_local_enabled": prototype.ru_model is not None,
