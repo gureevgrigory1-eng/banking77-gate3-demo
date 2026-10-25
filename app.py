@@ -9,11 +9,11 @@ from threading import Lock
 
 from flask import Flask, jsonify, render_template, request
 
-from prototype_core import Prototype
+from rag import RAGPrototype, normalize_history
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
-prototype = Prototype()
+prototype = RAGPrototype()
 requests_by_client: dict[str, deque[float]] = {}
 request_lock = Lock()
 HOURLY_LIMIT = 30
@@ -43,10 +43,12 @@ def index():
 @app.get("/api/health")
 def health():
     return jsonify({
-        "status": "ok", "model": "Banking77 English + synthetic Russian classifier; remote triage when configured",
+        "status": "ok", "model": prototype.remote.model,
         "remote_enabled": prototype.remote.available,
         "remote_provider": prototype.remote.provider if prototype.remote.available else None,
-        "russian_local_enabled": prototype.ru_model is not None,
+        "rag": True, "article_count": len(prototype.retriever.articles),
+        "semantic_index_ready": prototype.retriever.vectors is not None,
+        "kb_version": prototype.retriever.articles[0]["version"],
         "knowledge_base": "fictional demo",
     })
 
@@ -62,11 +64,7 @@ def ask():
     raw_history = payload.get("history", [])
     if not isinstance(raw_query, str) or not isinstance(raw_history, list):
         return jsonify({"error": "Некорректный формат вопроса или истории"}), 400
-    history = [
-        {"text": item["text"][:200]}
-        for item in raw_history[-3:]
-        if isinstance(item, dict) and isinstance(item.get("text"), str)
-    ]
+    history = normalize_history(raw_history)
     try:
         answer = prototype.ask(raw_query, history)
     except ValueError as exc:

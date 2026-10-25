@@ -57,7 +57,7 @@ class Prototype:
         self.personal_threshold = artifact["personal_threshold"]
         ru_artifact = self.root / "ru_model.joblib"
         self.ru_model = joblib.load(ru_artifact) if ru_artifact.exists() else None
-        self.kb = {row["intent"]: row for row in json.loads((self.root / "knowledge_base.json").read_text(encoding="utf-8"))}
+        self.kb = {row["intent"]: row for row in json.loads((self.root / "knowledge_base_legacy.json").read_text(encoding="utf-8"))}
         self.remote = remote if remote is not None else RemoteRouter(self.root)
 
     def classify(self, query: str):

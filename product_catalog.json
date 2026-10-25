@@ -1,0 +1,13 @@
+{
+  "version": "2026-10-25.1", "valid_from": "2026-10-25", "kind": "fictional",
+  "disclaimer": "Все продукты, ставки и условия вымышлены для учебного Демо-банка. Это не условия Т-Банка или другого реального банка.",
+  "products": {
+    "debit": {"name":"Карта Каждый день", "type":"дебетовая карта", "age":18, "service_month":0, "cashback_pct":1, "cashback_cap_month":1000, "delivery_min_days":2, "delivery_max_days":5, "cash_free_month":100000, "cash_over_pct":2, "cash_over_min":90},
+    "credit": {"name":"Карта Запас", "type":"кредитная карта", "age":21, "age_max":65, "service_month":0, "limit_min":10000, "limit_max":200000, "grace_days":55, "rate_pct":29, "payment_pct":5, "payment_min":500, "cash_fee_pct":3, "cash_fee_fixed":300},
+    "junior": {"name":"Карта Старт", "type":"детская карта", "age":6, "age_max":17, "service_month":0, "delivery_min_days":2, "delivery_max_days":5, "default_limit_day":1000},
+    "savings": {"name":"Счёт Копилка", "type":"накопительный счёт", "age":18, "rate_pct":8, "min_balance":0, "service_month":0},
+    "deposit": {"name":"Вклад Горизонт", "type":"срочный вклад", "age":18, "rate_pct":10, "term_months":6, "min_amount":10000, "early_rate_pct":0.01},
+    "loan": {"name":"Кредит План", "type":"кредит наличными", "age":21, "age_max":65, "amount_min":50000, "amount_max":500000, "term_min_months":12, "term_max_months":36, "rate_pct":24}
+  },
+  "transfers": {"internal_fee":0, "internal_minutes":1, "external_days":2, "sbp_free_month":100000, "sbp_over_pct":0.5, "sbp_over_max":1500}
+}
