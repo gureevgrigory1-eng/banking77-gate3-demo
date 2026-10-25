@@ -1,0 +1,23 @@
+{
+  "cases": 80,
+  "qa_cases": 50,
+  "rag_recall_at5": 1.0,
+  "baseline_recall_at5": 1.0,
+  "rag_regex_fact_coverage": 0.8,
+  "baseline_regex_fact_coverage": 0.88,
+  "risk_detected": 20,
+  "risk_cases": 20,
+  "latency_all_p50_ms": 1705.5,
+  "latency_all_p95_ms": 3414.3999999999996,
+  "latency_qa_p50_ms": 2090.5,
+  "latency_qa_p95_ms": 3464.45,
+  "baseline_p95_ms": 2.231062996906985,
+  "usage": {
+    "embedding_tokens": 0,
+    "prompt_tokens": 36355,
+    "completion_tokens": 6000,
+    "total_tokens": 42355
+  },
+  "fallbacks": 3,
+  "note": "Regex checks measure expected fact coverage, not independently verified factual correctness. Manual review required."
+}
