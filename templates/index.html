@@ -58,7 +58,7 @@
   <header><div class="brand"><span class="logo">Д</span> Демо-банк <span class="sub">AI-поддержка · Gate 3</span></div><div class="badge">Учебный прототип · без реальных данных</div></header>
   <main>
     <section class="card">
-      <div class="head"><h1>Напишите вопрос банку</h1><p class="muted" id="availability">Русский и английский учебные маршруты работают локально. Если настроен удалённый Qwen, он уточняет и готовит черновик. Не вводите реальные данные карты и счёта.</p></div>
+      <div class="head"><h1>Напишите вопрос банку</h1><p class="muted" id="availability">Русский и английский учебные маршруты работают локально. При настроенном GigaChat он уточняет запрос и готовит черновик. Не вводите реальные данные карты и счёта.</p></div>
       <div class="chat" id="chat"><div class="bubble assistant">Здравствуйте! Я помогу разобраться с вопросом, уточню детали или подготовлю контекст для сотрудника.</div></div>
       <div class="samples">
         <button class="sample" data-query="Сколько идёт доставка карты?">Доставка карты</button>
@@ -73,7 +73,7 @@
     <section class="card">
       <div class="head"><h2>Что происходит с обращением</h2><p class="muted">Панель показывает тему, маршрут и происхождение ответа.</p></div>
       <div class="panel" id="panel">
-        <div class="step"><div class="dot">1</div><div><strong>Понять вопрос</strong><span class="muted">Локальные модели определяют учебные темы; Qwen подключается при наличии ключа.</span></div></div>
+        <div class="step"><div class="dot">1</div><div><strong>Понять вопрос</strong><span class="muted">Локальные модели определяют учебные темы; GigaChat подключается при наличии ключа.</span></div></div>
         <div class="step"><div class="dot">2</div><div><strong>Выбрать действие</strong><span class="muted">Ответить из источника, уточнить вопрос или подготовить контекст для сотрудника.</span></div></div>
         <div class="step"><div class="dot">3</div><div><strong>Показать источник</strong><span class="muted">Вымышленные условия Демо-банка явно помечаются.</span></div></div>
         <p class="note">Используется синтетическая база знаний. Ответы не являются банковской консультацией.</p>
@@ -115,7 +115,7 @@
     form.addEventListener('submit',e=>{e.preventDefault();ask(input.value)});
     document.querySelectorAll('.sample').forEach(el=>el.addEventListener('click',()=>ask(el.dataset.query)));
     fetch('/api/health').then(r=>r.json()).then(data=>{
-      if(!data.remote_enabled) document.getElementById('availability').textContent='Русский и английский маршруты работают локально. Без ключа Qwen не генерирует уточнения и черновики; ответы берутся только из учебной базы. Не вводите реальные данные карты и счёта.';
+      if(!data.remote_enabled) document.getElementById('availability').textContent='Русский и английский маршруты работают локально. Без удалённой модели уточнения и черновики формируются учебными правилами; ответы берутся только из учебной базы. Не вводите реальные данные карты и счёта.';
     }).catch(()=>{});
   </script>
 </body>
