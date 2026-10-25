@@ -80,6 +80,7 @@ class Prototype:
             return self._handoff(
                 query, history, "Правило безопасности: возможен рискованный запрос", [],
                 decision.get("operator_draft", "") if decision else "",
+                self.remote.provider if decision else "",
             )
         if query.lower().startswith("демо:"):
             return self._demo_status()
@@ -90,7 +91,7 @@ class Prototype:
             except RemoteRouterError as exc:
                 remote_error = str(exc)
         else:
-            remote_error = "Для режима Qwen нужен ключ Groq или OpenRouter API"
+            remote_error = "Удалённая модель не настроена"
         if is_russian(query):
             if self.ru_model:
                 return self._from_local_ru(query, history)
@@ -118,9 +119,9 @@ class Prototype:
     def _from_remote(self, query, history, decision):
         intent = decision["intent"] if decision["intent"] != "none" else None
         kind = decision["kind"]
-        reason = f"Qwen через {self.remote.provider}: {str(decision['reason'])[:180]}"
+        reason = f"{self.remote.provider}: {str(decision['reason'])[:180]}"
         if kind in {"risk", "human_request"} or intent in RISK_INTENTS:
-            return self._handoff(query, history, reason, [(intent, 0)] if intent else [], decision.get("operator_draft", ""))
+            return self._handoff(query, history, reason, [(intent, 0)] if intent else [], decision.get("operator_draft", ""), self.remote.provider)
         if kind == "greeting":
             return self._clarify("Здравствуйте! Чем могу помочь по карте, платежу или переводу?", None, reason)
         if kind == "general" and intent in SAFE_INTENTS and intent in self.kb:
@@ -207,7 +208,7 @@ class Prototype:
         }
 
     @staticmethod
-    def _handoff(query, history, reason, top, draft=""):
+    def _handoff(query, history, reason, top, draft="", provider=""):
         prior = [str(x.get("text", ""))[:200] for x in history[-3:] if isinstance(x, dict)]
         summary = " → ".join(prior + [query])
         draft = str(draft).strip()[:500]
@@ -220,6 +221,6 @@ class Prototype:
             "top_intents": top,
             "operator_summary": summary,
             "operator_draft": draft or "Проверю ваш вопрос по актуальным данным. Если потребуется, уточню детали, прежде чем дать ответ.",
-            "draft_source": "Черновик Qwen · требует проверки сотрудником" if draft else "Шаблонный черновик · требует проверки сотрудником",
+            "draft_source": f"Черновик {provider} · требует проверки сотрудником" if draft else "Шаблонный черновик · требует проверки сотрудником",
             "note": "Передача сотруднику показана в интерфейсе; реальной очереди операторов нет.",
         }
