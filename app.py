@@ -56,7 +56,7 @@ def health():
 @app.post("/api/ask")
 def ask():
     if over_limit(request.remote_addr or "unknown"):
-        return jsonify({"error": "Достигнут лимит демо: 30 вопросов в час. Попробуйте позже."}), 429
+        return jsonify({"error": "Достигнут лимит: 30 вопросов в час. Попробуйте позже."}), 429
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"error": "Ожидается JSON-объект"}), 400
