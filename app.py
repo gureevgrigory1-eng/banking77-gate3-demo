@@ -1,4 +1,4 @@
-"""Local Gate 3 demo. Run: python app.py"""
+"""Product assistant service. Run: python app.py"""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def health():
         "rag": True, "article_count": len(prototype.retriever.articles),
         "semantic_index_ready": prototype.retriever.vectors is not None,
         "kb_version": prototype.retriever.articles[0]["version"],
-        "knowledge_base": "fictional demo",
+        "knowledge_base": "Демо-банк",
     })
 
 
