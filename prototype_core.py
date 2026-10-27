@@ -132,7 +132,7 @@ class Prototype:
         else:
             answer = question or "Уточните, пожалуйста, о какой операции или продукте речь?"
         if kind == "general" and intent not in self.kb:
-            answer = "По этой теме в учебной базе пока нет проверенного ответа. " + answer
+            answer = "По этой теме пока нет подтверждённых сведений. " + answer
         choices = decision.get("clarifying_choices", []) if kind in {"personal", "unclear"} else []
         return self._clarify(answer, intent, reason, choices=choices)
 
@@ -143,7 +143,7 @@ class Prototype:
         label = str(model.classes_[ranked[0]])
         confidence = float(probs[ranked[0]])
         top = [(str(model.classes_[i]), round(float(probs[i]), 4)) for i in ranked[:3]]
-        reason = "Локальная русскоязычная модель на синтетических учебных примерах"
+        reason = "Локальная русскоязычная модель на синтетических примерах"
         if label == "risk" and confidence >= 0.45:
             return self._handoff(query, history, "Русская модель: возможный риск; нужна проверка сотрудника", top)
         if label in SAFE_INTENTS and confidence >= self.ru_model["threshold"]:
@@ -183,7 +183,7 @@ class Prototype:
             "mode": "autopilot", "answer": article["answer"], "intent": intent,
             "confidence": confidence, "top_intents": top, "article": article,
             "reason": reason,
-            "note": "Источник составлен для учебного Демо-банка; это не условия реального банка.",
+            "note": "Информация относится к продуктам Демо-банка. Операции со счетами в этом чате недоступны.",
         }
 
     @staticmethod
@@ -193,14 +193,14 @@ class Prototype:
             "confidence": round(confidence, 4) if confidence is not None else None,
             "top_intents": [], "reason": reason,
             "clarifying_choices": [str(choice).strip()[:80] for choice in (choices or [])[:3] if str(choice).strip()],
-            "note": "Ассистент уточняет вопрос. Передачи реальному сотруднику в прототипе нет.",
+            "note": "Я уточняю вопрос. В этом чате я не могу подключить сотрудника.",
         }
 
     @staticmethod
     def _demo_status():
         return {
             "mode": "personal_demo",
-            "answer": "По синтетической записи учебного клиента карта выпущена и ожидается 21 октября 2026 года. Это демонстрационный пример, не статус вашей карты.",
+            "answer": "В примере записи карта выпущена и ожидается 21 октября 2026 года. Это пример, а не статус вашей карты.",
             "intent": "card_arrival", "confidence": None, "top_intents": [],
             "article": {"id": "MOCK-001", "title": "Тестовый заказ карты", "source": "Синтетическая запись", "valid_from": "2026-10-18"},
             "reason": "Пользователь явно запросил демо-данные",
@@ -214,7 +214,7 @@ class Prototype:
         draft = str(draft).strip()[:500]
         return {
             "mode": "copilot",
-            "answer": "Здесь нужен сотрудник. Прототип подготовил для него краткий контекст, но реального подключения к поддержке пока нет.",
+            "answer": "Здесь нужна помощь сотрудника. Я подготовил описание обращения, но в этом чате не могу отправить его в поддержку.",
             "reason": reason,
             "intent": top[0][0] if top else None,
             "confidence": round(top[0][1], 4) if top and top[0][1] else None,
