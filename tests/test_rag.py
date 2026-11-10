@@ -12,15 +12,38 @@ class Tests(unittest.TestCase):
  def test_catalog_and_unique_sources(self):
   a=json.loads((ROOT/'knowledge_base.json').read_text());self.assertEqual(len(a),32);self.assertEqual(len({x['id'] for x in a}),32);self.assertTrue(all(x['kind']=='fictional' for x in a))
  def test_source_injection_rejected(self):
-  p=RAGPrototype(client=Fake({'route':'answer','answer':'Непроверенный тариф','source_ids':['FAKE'],'choices':[]}));r=p.ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'fallback');self.assertNotIn('Непроверенный',r['answer'])
+  p=RAGPrototype(client=Fake({'route':'answer','answer':'Непроверенный тариф','source_ids':['FAKE'],'choices':[]}));r=p.ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertNotIn('Непроверенный',r['answer'])
  def test_missing_source_rejected(self):
   r=RAGPrototype(client=Fake({'route':'answer','answer':'99%','source_ids':[],'choices':[]})).ask('Как оформить карту?');self.assertNotEqual(r['mode'],'autopilot')
- def test_api_failure_returns_article(self):
-  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'fallback');self.assertEqual(r['sources'][0]['id'],'D02')
+ def test_api_failure_does_not_return_unverified_article(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'prepared');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('оператор не подключён',r['answer'])
  def test_personal_route(self):
-  r=RAGPrototype(client=Fake({'route':'personal','answer':'Я не вижу ваш баланс.','source_ids':[],'choices':[]})).ask('Назови мой баланс');self.assertEqual(r['mode'],'clarify')
+  r=RAGPrototype(client=Fake({'route':'personal','answer':'Ваш баланс 999 ₽.','source_ids':[],'choices':[]})).ask('Назови мой баланс');self.assertEqual(r['mode'],'copilot');self.assertNotIn('999',r['answer'])
+ def test_unavailable_route_cannot_assert_unsupported_bank_policy(self):
+  r=RAGPrototype(client=Fake({'route':'unavailable','answer':'У нас нет такой услуги.','source_ids':[],'choices':[]})).ask('Есть ли у вас неизвестная услуга?')
+  self.assertEqual(r['mode'],'copilot');self.assertNotIn('У нас нет',r['answer'])
+ def test_known_missing_terms_do_not_reuse_other_transfer_tariff(self):
+  p=RAGPrototype(client=Fake({'route':'answer','answer':'Комиссия 0,5%.','source_ids':['G03'],'choices':[]}))
+  r=p.ask('Какая комиссия за перевод себе в другой банк через СБП?')
+  self.assertEqual(r['retrieval']['mode'],'scope_rule');self.assertNotIn('0,5%',r['answer'])
+  self.assertEqual(p.ask('Есть ли переводы в криптовалюте?')['retrieval']['mode'],'scope_rule')
+ def test_deposit_followup_does_not_promise_same_terms(self):
+  p=RAGPrototype(client=Fake({'route':'answer','answer':'Да, на тех же условиях.','source_ids':['V01'],'choices':[]}))
+  history=[{'role':'user','text':'На сколько открывается вклад Горизонт?'},{'role':'assistant','text':'Вклад открывается на 6 месяцев.','route':'answer'}]
+  r=p.ask('А её можно продлить?',history)
+  self.assertEqual(r['retrieval']['mode'],'policy_rule');self.assertIn('Автоматического продления',r['answer']);self.assertNotIn('на тех же условиях',r['answer'])
  def test_risk_and_instruction_are_distinct(self):
-  p=RAGPrototype(client=Fake(error=True));self.assertEqual(p.ask('Я не узнаю списание')['mode'],'copilot');self.assertNotEqual(p.ask('Как заблокировать карту?')['mode'],'copilot')
+  p=RAGPrototype(client=Fake(error=True));self.assertEqual(p.ask('Я не узнаю списание')['retrieval']['mode'],'safety_rule');self.assertNotEqual(p.ask('Как заблокировать карту?')['retrieval']['mode'],'safety_rule')
+ def test_credentials_and_child_card_loss_get_relevant_actions(self):
+  p=RAGPrototype(client=Fake(error=True))
+  password=p.ask('Кто-то знает мой пароль от банковского приложения.')
+  self.assertEqual(password['mode'],'copilot');self.assertIn('пароль',password['answer']);self.assertNotIn('Если карта потеряна',password['answer'])
+  child=p.ask('А если карта ребёнка потерялась?')
+  self.assertEqual(child['mode'],'copilot');self.assertEqual(child['sources'][0]['id'],'J04');self.assertIn('Заблокировать',child['answer'])
+ def test_sensitive_values_redacted_from_operator_summary(self):
+  p=RAGPrototype(client=Fake(error=True))
+  r=p.ask('Я сообщил код из СМС 123456 и номер карты 1234 5678 9012 3456 постороннему.')
+  self.assertEqual(r['mode'],'copilot');self.assertNotIn('123456',r['operator_summary']);self.assertNotIn('1234 5678 9012 3456',r['operator_summary'])
  def test_history_compatibility(self):
   self.assertEqual(normalize_history([{'text':'Копилка'},{'role':'system','text':'bad'}])[0]['role'],'user');self.assertEqual(normalize_history([{'role':'system','text':'bad'}])[0]['role'],'user')
   self.assertEqual(normalize_history([{'role':'assistant','text':'Уточните','route':'clarify'}])[0]['route'],'clarify')
