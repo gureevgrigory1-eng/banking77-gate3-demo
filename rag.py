@@ -8,6 +8,30 @@ ROOT=Path(__file__).resolve().parent
 NOTE='Информация относится к продуктам Демо-банка. Операции со счетами в этом чате недоступны.'
 ALIASES={'debit':['каждый день','дебетов','дебетовая','зарплатн'],'credit':['запас','кредитн','кредитка'],'junior':['старт','детск','ребен','ребён','школьн','подрост'],'savings':['копилк','накопительн'],'deposit':['горизонт','вклад','депозит'],'loan':['план','кредит налич','потребительск']}
 RISK=re.compile(r'мошенн|украл|украден|потерял.{0,25}карт|потеряна.{0,15}карт|потерял.{0,15}телефон|не\s+(?:узнаю|совершал|делал|проводил|подтверждал|покупал)|незнаком.{0,20}(?:плат|спис|перев)|неизвестн.{0,20}(?:плат|спис|перев)|без моего|подозрительн.{0,20}(?:спис|перев|операц)|(?:сообщил|передал|назвал|отправил).{0,30}(?:код|парол|cvv|пин)|(?:списали|сняли).{0,25}(?:дважды|два раза)|(?:переведи|отправь|перечисли)\s+(?:мне\s+)?(?:деньги|\d)|(?:оформи|выдай)\s+(?:мне\s+)?кредит|(?:заблокируй|разблокируй).{0,20}карт|(?:закрой|открой).{0,20}(?:сч[её]т|вклад)|stolen|fraud|unrecognised|unauthorized',re.I)
+CARD_LOSS=re.compile(r'(?:карт.{0,40}(?:потер|украд|пропал)|(?:потер|украд|пропал).{0,40}карт)',re.I)
+CREDENTIAL_RISK=re.compile(r'(?:кто-то|посторон|незнаком|мошенн).{0,45}(?:парол|пин|cvv|код)|(?:парол|пин|cvv|код).{0,45}(?:знает|узнал|передал|назвал|сообщил|ут[её]к|посторон)',re.I)
+
+def risk_kind(query):
+ if CREDENTIAL_RISK.search(query):return 'credentials'
+ if CARD_LOSS.search(query):return 'child_card_loss' if re.search(r'детск|реб[её]н|старт',query,re.I) else 'card_loss'
+ if RISK.search(query):return 'other'
+ return None
+
+def redact_summary(text):
+ text=re.sub(r'\b(?:\d[ -]?){12,18}\d\b','[номер карты скрыт]',text)
+ text=re.sub(r'\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b','[email скрыт]',text)
+ text=re.sub(r'((?:код(?: из смс)?|cvv|пин)[^\d\n]{0,15})\d{3,6}\b',r'\1[значение скрыто]',text,flags=re.I)
+ return text
+
+def unsupported_scope(query):
+ text=query.lower()
+ if 'криптовалют' in text and re.search(r'перевод|плат[её]ж|обмен',text):return 'Условия операций с криптовалютой не описаны в базе знаний.'
+ if 'сбп' in text and re.search(r'себе|самому себе|между своими',text) and re.search(r'друг.{0,12}банк|ин.{0,12}банк',text):
+  return 'Условия перевода себе в другой банк по СБП не описаны в базе знаний.'
+ return None
+
+def asks_deposit_extension(query,history):
+ return bool(re.search(r'продл|пролонг',query,re.I) and 'deposit' in product_mentions(query+' '+ ' '.join(x['text'] for x in history)))
 def normalize_history(history):
  result=[]
  for x in (history or [])[-6:]:
@@ -71,20 +95,42 @@ class RAGPrototype:
   self.remote=client or GigaClient(); self.retriever=Retriever(root,self.remote)
  def result(self,answer,mode='autopilot',sources=None,**extra):
   return dict(mode=mode,answer=answer,sources=sources or [],note=NOTE,**extra)
- def handoff(self,query,history):
+ def handoff(self,query,history,kind='other'):
   source=self.retriever.by_id['G05']; support=self.retriever.by_id['G06']
-  return self.result('Я не могу проверить или выполнить такую операцию в этом чате. Если карта потеряна или вы заметили неизвестное списание, заблокируйте карту в приложении и обратитесь в поддержку через официальный канал. Не сообщайте ПИН, CVV и коды из СМС. Я подготовил описание обращения, но специалист ещё не подключён.',mode='copilot',sources=[source,support],operator_summary='\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]),draft='Нужно проверить обстоятельства обращения через защищённый канал. Действия со счётом не выполнены.',reason='Инцидент или запрос действия требует защищённого канала.',route='human')
+  sources=[source,support]
+  if kind=='child_card_loss':
+   sources=[self.retriever.by_id['J04'],support]
+   answer='Если потеряна детская карта «Старт», родителю нужно открыть её в приложении: «Старт» → «Настройки» → «Заблокировать», затем обратиться в поддержку через «Помощь» → «Чат» для перевыпуска. В этом чате карта не блокируется и специалист не подключается.'
+  elif kind=='credentials':
+   answer='Если пароль, ПИН или код стал известен постороннему, прекратите общение с ним, смените пароль через официальный канал и срочно обратитесь в поддержку через «Помощь» → «Чат» в приложении. Не сообщайте новые коды или пароль в этом чате. Здесь я не могу защитить ваш доступ или подключить специалиста.'
+  elif kind=='card_loss':
+   answer='Если карта потеряна или украдена, сразу откройте её в приложении и выберите «Настройки» → «Заблокировать», затем обратитесь в поддержку через «Помощь» → «Чат». В этом чате карта не блокируется и специалист не подключается.'
+  else:
+   answer='Я не могу проверить или выполнить такую операцию в этом чате. При неизвестном списании или подозрении на мошенничество сразу заблокируйте карту в приложении и обратитесь в поддержку через «Помощь» → «Чат». Не сообщайте ПИН, CVV, пароль и коды из СМС. Специалист пока не подключён.'
+  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
+  return self.result(answer,mode='copilot',sources=sources,operator_summary=summary,draft='Нужно проверить обстоятельства обращения через защищённый канал. Действия со счётом не выполнены.',reason='Инцидент или запрос действия требует защищённого канала.',route='human',handoff_status='prepared')
+ def safe_fallback(self,query,history,reason):
+  support=self.retriever.by_id['G06']
+  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
+  return self.result('Для ответа нужен специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[support],operator_summary=summary,draft='Проверить вопрос по актуальным условиям и ответить клиенту.',reason=reason,route='human',handoff_status='prepared')
  def clarification_handoff(self,query,history):
-  summary='\n'.join([x['text'] for x in history if x['role']=='user']+[query])
-  return self.result('Я пока не смог разобраться в вашем вопросе. Подготовил описание для специалиста — его можно передать через раздел «Помощь» → «Чат» в приложении. В этом чате обращение не отправляется автоматически.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=summary,draft='Пожалуйста, уточните запрос клиента и помогите с решением.',reason='После трёх уточнений вопрос остался неоднозначным.',route='human')
+  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user']+[query]))
+  return self.result('Вопрос остаётся неясным. Требуется специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=summary,draft='Пожалуйста, уточните запрос клиента и помогите с решением.',reason='После трёх уточнений вопрос остался неоднозначным.',route='human',handoff_status='prepared')
  def ask(self,query,history=None):
   query=query.strip()[:1000]; history=normalize_history(history); started=time.monotonic(); deadline=started+25
   if not query:raise ValueError('Введите вопрос')
   usage={'embedding_tokens':0,'prompt_tokens':0,'completion_tokens':0,'total_tokens':0}
-  if RISK.search(query) and not re.search(r'^(как |что делать,? если |что делать если |инструкция)',query.lower()):
-   out=self.handoff(query,history); retrieval={'mode':'safety_rule','retrieved_ids':[]}
+  kind=risk_kind(query)
+  if kind:
+   out=self.handoff(query,history,kind); retrieval={'mode':'safety_rule','retrieved_ids':[]}
+  elif unsupported_scope(query):
+   out=self.safe_fallback(query,history,unsupported_scope(query)); retrieval={'mode':'scope_rule','retrieved_ids':[]}
+  elif asks_deposit_extension(query,history):
+   sources=[self.retriever.by_id[i] for i in ('V01','V02','V03')]
+   out=self.result('Автоматического продления вклада «Горизонт» нет. В конце срока сумма и проценты поступают на выбранный счёт. Если захотите открыть новый вклад, проверьте его условия в приложении на тот момент: прежнюю ставку и другие условия я не могу обещать.',sources=sources,reason='Ответ по подтверждённым условиям вклада.',route='answer')
+   retrieval={'mode':'policy_rule','retrieved_ids':[a['id'] for a in sources]}
   elif re.search(r'оператор|живого человека|позови.{0,15}сотрудник',query,re.I):
-   out=self.result('Я могу подготовить описание вашего вопроса для специалиста. Чтобы передать его, откройте в приложении «Помощь» → «Чат». Из этого чата обращение не отправляется автоматически.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=query,draft='Клиент просит помощь специалиста.',reason='Запрос помощи специалиста.',route='human'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+   out=self.result('Для ответа нужен специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=redact_summary(query),draft='Клиент просит помощь специалиста.',reason='Запрос помощи специалиста.',route='human',handoff_status='prepared'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
   else:
    docs,retrieval=self.retriever.search(query,history,deadline); usage['embedding_tokens']=retrieval['embedding_tokens']
    try:
@@ -93,13 +139,12 @@ class RAGPrototype:
     ids=data['source_ids']; allowed={a['id']:a for a in docs}
     if any(i not in allowed for i in ids) or (data['route']=='answer' and not ids):raise GigaError('invalid_citations')
     sources=[allowed[i] for i in dict.fromkeys(ids)]
-    if data['route'] in ('risk','human'):out=self.handoff(query,history)
+    if data['route'] in ('risk','human'):out=self.handoff(query,history,kind or 'other')
     elif data['route'] in ('clarify','unavailable') and clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
+    elif data['route'] in ('unavailable','personal'):out=self.safe_fallback(query,history,'Личные сведения или условия отсутствуют в подтверждённой базе.')
     else:out=self.result(data['answer'],mode='autopilot' if data['route']=='answer' else 'clarify',sources=sources,clarifying_choices=data['choices'][:3],reason='Ответ по условиям продуктов.' if data['route']=='answer' else 'Нужно уточнение или недоступны личные сведения.',route=data['route'])
    except (GigaError,KeyError,TypeError,ValueError) as exc:
-    if retrieval['lexical_score']>=.10:
-     out=self.result('Сейчас не получается подготовить точный ответ. Вот сведения по вашему вопросу:\n\n'+docs[0]['content'],mode='fallback',sources=[docs[0]],reason='Временный ответ по сведениям о продукте.',fallback_code=str(exc) if isinstance(exc,GigaError) else 'invalid_response')
-    elif clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
-    else:out=self.result('Пока не могу уточнить это по имеющимся сведениям. Назовите продукт: карта Каждый день, Запас, Старт, счёт Копилка, вклад Горизонт или кредит План.',mode='clarify',reason='Недостаточно сведений для ответа.',route='unavailable')
+    if clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
+    else:out=self.safe_fallback(query,history,'Автоматический ответ временно недоступен; сведения из поиска не проверены.')
   out.update(retrieval=retrieval,usage=usage,latency_ms=round((time.monotonic()-started)*1000),kb_version=self.retriever.articles[0]['version'])
   return out
