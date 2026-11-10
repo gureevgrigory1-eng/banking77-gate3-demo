@@ -16,7 +16,12 @@ class Tests(unittest.TestCase):
  def test_missing_source_rejected(self):
   r=RAGPrototype(client=Fake({'route':'answer','answer':'99%','source_ids':[],'choices':[]})).ask('Как оформить карту?');self.assertNotEqual(r['mode'],'autopilot')
  def test_api_failure_does_not_return_unverified_article(self):
-  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'prepared');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('оператор не подключён',r['answer'])
+  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'prepared');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('оператор не подключён',r['answer']);self.assertEqual(r['fallback_code'],'http_429')
+ def test_greeting_needs_no_bank_source_or_model(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for query in ('Привет!','Здравствуйте','Добрый день'):
+   r=p.ask(query);self.assertEqual(r['mode'],'autopilot');self.assertEqual(r['retrieval']['mode'],'greeting_rule');self.assertEqual(r['sources'],[]);self.assertNotIn('fallback_code',r)
+  self.assertEqual(p.ask('Привет! Как оформить карту?')['retrieval']['mode'],'lexical')
  def test_personal_route(self):
   r=RAGPrototype(client=Fake({'route':'personal','answer':'Ваш баланс 999 ₽.','source_ids':[],'choices':[]})).ask('Назови мой баланс');self.assertEqual(r['mode'],'copilot');self.assertNotIn('999',r['answer'])
  def test_unavailable_route_cannot_assert_unsupported_bank_policy(self):
@@ -70,6 +75,18 @@ class Tests(unittest.TestCase):
  def test_deadline(self):
   from giga_client import GigaClient
   with self.assertRaises(GigaError):GigaClient()._request('https://api.giga.chat/v1/embeddings',b'{}',{},time.monotonic()-1)
+ def test_transient_model_error_is_retried_once(self):
+  from giga_client import GigaClient
+  client=GigaClient();client.token=lambda deadline:'token';calls=[]
+  def request_once_failed(*args):
+   calls.append(args)
+   if len(calls)==1:raise GigaError('http_429')
+   return {'ok':True}
+  client._request=request_once_failed
+  with patch('giga_client.time.sleep') as pause:
+   self.assertEqual(client.post('chat/completions',{},time.monotonic()+5),{'ok':True})
+   pause.assert_called_once()
+  self.assertEqual(len(calls),2)
  def test_http_contract(self):
   from app import app,requests_by_client
   requests_by_client.clear()
