@@ -10,6 +10,7 @@ ALIASES={'debit':['каждый день','дебетов','дебетовая',
 RISK=re.compile(r'мошенн|украл|украден|потерял.{0,25}карт|потеряна.{0,15}карт|потерял.{0,15}телефон|не\s+(?:узнаю|совершал|делал|проводил|подтверждал|покупал)|незнаком.{0,20}(?:плат|спис|перев)|неизвестн.{0,20}(?:плат|спис|перев)|без моего|подозрительн.{0,20}(?:спис|перев|операц)|(?:сообщил|передал|назвал|отправил).{0,30}(?:код|парол|cvv|пин)|(?:списали|сняли).{0,25}(?:дважды|два раза)|(?:переведи|отправь|перечисли)\s+(?:мне\s+)?(?:деньги|\d)|(?:оформи|выдай)\s+(?:мне\s+)?кредит|(?:заблокируй|разблокируй).{0,20}карт|(?:закрой|открой).{0,20}(?:сч[её]т|вклад)|stolen|fraud|unrecognised|unauthorized',re.I)
 CARD_LOSS=re.compile(r'(?:карт.{0,40}(?:потер|украд|пропал)|(?:потер|украд|пропал).{0,40}карт)',re.I)
 CREDENTIAL_RISK=re.compile(r'(?:кто-то|посторон|незнаком|мошенн).{0,45}(?:парол|пин|cvv|код)|(?:парол|пин|cvv|код).{0,45}(?:знает|узнал|передал|назвал|сообщил|ут[её]к|посторон)',re.I)
+GREETING=re.compile(r'^(?:привет(?:ствую)?|здравствуйте|здравствуй(?:те)?|доброе утро|добрый день|добрый вечер)[\s!?.]*$',re.I)
 
 def risk_kind(query):
  if CREDENTIAL_RISK.search(query):return 'credentials'
@@ -121,7 +122,9 @@ class RAGPrototype:
   if not query:raise ValueError('Введите вопрос')
   usage={'embedding_tokens':0,'prompt_tokens':0,'completion_tokens':0,'total_tokens':0}
   kind=risk_kind(query)
-  if kind:
+  if GREETING.fullmatch(query):
+   out=self.result('Здравствуйте! Помогу разобраться с картами, сбережениями, кредитом и переводами Демо-банка. О чём хотите узнать?',reason='Приветствие.',route='answer'); retrieval={'mode':'greeting_rule','retrieved_ids':[]}
+  elif kind:
    out=self.handoff(query,history,kind); retrieval={'mode':'safety_rule','retrieved_ids':[]}
   elif unsupported_scope(query):
    out=self.safe_fallback(query,history,unsupported_scope(query)); retrieval={'mode':'scope_rule','retrieved_ids':[]}
@@ -146,5 +149,6 @@ class RAGPrototype:
    except (GigaError,KeyError,TypeError,ValueError) as exc:
     if clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
     else:out=self.safe_fallback(query,history,'Автоматический ответ временно недоступен; сведения из поиска не проверены.')
+    out['fallback_code']=str(exc) if isinstance(exc,GigaError) else 'invalid_response'
   out.update(retrieval=retrieval,usage=usage,latency_ms=round((time.monotonic()-started)*1000),kb_version=self.retriever.articles[0]['version'])
   return out

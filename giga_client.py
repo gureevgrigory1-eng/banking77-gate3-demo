@@ -43,8 +43,12 @@ class GigaClient:
    token=self.token(deadline)
    try:return self._request('https://api.giga.chat/v1/'+path,json.dumps(payload,ensure_ascii=False).encode(),{'Authorization':'Bearer '+token,'Content-Type':'application/json'},deadline)
    except GigaError as exc:
-    if str(exc)!='http_401' or attempt:raise
-    with self._lock:self._token=''
+    if attempt:raise
+    if str(exc)=='http_401':
+     with self._lock:self._token=''
+    elif str(exc) in ('http_429','http_502','http_503','http_504') and deadline-time.monotonic()>1.5:
+     time.sleep(min(1.0,max(0,deadline-time.monotonic()-.5)))
+    else:raise
  def embed(self,texts,deadline):
   data=self.post('embeddings',{'model':self.embedding_model,'input':texts},deadline)
   items=sorted(data['data'],key=lambda x:x['index'])
