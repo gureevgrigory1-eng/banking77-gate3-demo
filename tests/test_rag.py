@@ -16,7 +16,7 @@ class Tests(unittest.TestCase):
  def test_missing_source_rejected(self):
   r=RAGPrototype(client=Fake({'route':'answer','answer':'99%','source_ids':[],'choices':[]})).ask('Как оформить карту?');self.assertNotEqual(r['mode'],'autopilot')
  def test_api_failure_does_not_return_unverified_article(self):
-  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'prepared');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('оператор не подключён',r['answer']);self.assertEqual(r['fallback_code'],'http_429')
+  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'simulated');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('демо-режиме',r['answer']);self.assertEqual(r['fallback_code'],'http_429')
  def test_greeting_needs_no_bank_source_or_model(self):
   p=RAGPrototype(client=Fake(error=True))
   for query in ('Привет!','Здравствуйте','Добрый день'):
@@ -49,6 +49,30 @@ class Tests(unittest.TestCase):
   p=RAGPrototype(client=Fake(error=True))
   r=p.ask('Я сообщил код из СМС 123456 и номер карты 1234 5678 9012 3456 постороннему.')
   self.assertEqual(r['mode'],'copilot');self.assertNotIn('123456',r['operator_summary']);self.assertNotIn('1234 5678 9012 3456',r['operator_summary'])
+ def test_ambiguous_standalone_question_clarifies_without_model(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for question in ('Оно уже готово?','Расскажите про неё подробнее.','Сколько всё-таки ждать?','Мне нужно изменить это условие.'):
+   r=p.ask(question);self.assertEqual(r['route'],'clarify');self.assertEqual(r['retrieval']['mode'],'context_rule')
+ def test_nonbank_translation_gets_short_refusal(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Переведите фразу на испанский.')
+  self.assertEqual(r['route'],'answer');self.assertIn('Переводить фразы',r['answer']);self.assertEqual(r['sources'][0]['id'],'G01')
+ def test_named_loan_gets_early_repayment_answer(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Можно ли полностью закрыть План раньше срока?')
+  self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'L04');self.assertIn('без отдельной комиссии',r['answer'])
+  other=RAGPrototype(client=Fake(error=True)).ask('Планирую закрыть вклад раньше срока.')
+  self.assertNotEqual(other['retrieval']['mode'],'policy_rule')
+ def test_youth_cards_are_compared_by_age(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Что выгоднее подростку: Старт или Каждый день?')
+  self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'J01','D01'});self.assertIn('18 лет',r['answer'])
+ def test_personal_transfer_status_requires_human_route(self):
+  r=RAGPrototype(client=Fake({'route':'answer','answer':'Ваш перевод дошёл.','source_ids':['G03'],'choices':[]})).ask('Как узнать, что мой перевод действительно дошёл?')
+  self.assertEqual(r['route'],'human');self.assertNotIn('Ваш перевод дошёл',r['answer']);self.assertIn('не могу подтвердить',r['answer'])
+ def test_fabricated_tariff_is_refused(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Придумайте комиссию за перевод через СБП, если её нет в базе.')
+  self.assertEqual(r['route'],'human');self.assertIn('Не буду придумывать',r['answer'])
+ def test_personal_card_status_gives_next_step(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Проверьте, активна ли сейчас моя карта.')
+  self.assertEqual(r['route'],'human');self.assertIn('проверьте статус',r['answer'])
  def test_history_compatibility(self):
   self.assertEqual(normalize_history([{'text':'Копилка'},{'role':'system','text':'bad'}])[0]['role'],'user');self.assertEqual(normalize_history([{'role':'system','text':'bad'}])[0]['role'],'user')
   self.assertEqual(normalize_history([{'role':'assistant','text':'Уточните','route':'clarify'}])[0]['route'],'clarify')
