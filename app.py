@@ -17,6 +17,7 @@ prototype = RAGPrototype()
 requests_by_client: dict[str, deque[float]] = {}
 request_lock = Lock()
 HOURLY_LIMIT = int(os.environ.get("HOURLY_LIMIT", "200"))
+RELEASE = "2026-11-11-routing-1"
 
 
 def over_limit(client: str) -> bool:
@@ -50,6 +51,7 @@ def health():
         "semantic_index_ready": prototype.retriever.vectors is not None,
         "kb_version": prototype.retriever.articles[0]["version"],
         "knowledge_base": "Демо-банк",
+        "release": RELEASE,
     })
 
 

@@ -31,6 +31,29 @@ def unsupported_scope(query):
   return 'Условия перевода себе в другой банк по СБП не описаны в базе знаний.'
  return None
 
+def needs_context(query,history):
+ if history or product_mentions(query) or re.search(r'карт|сч[её]т|вклад|кредит|комисс|перевод|плат[её]ж|тариф|заявк',query,re.I):return False
+ return bool(re.search(r'\b(оно|она|он|е[её]|это|этот|эту|этой|него|не[её]|ней|там)\b|\b(?:сколько|долго).{0,20}ждать\b',query,re.I))
+
+def outside_bank_scope(query):
+ return bool(re.search(r'\bперевед(?:ите|и)\b.{0,45}\b(?:фраз[уы]|предложени[ея]|текст)\b.{0,45}\bна\s+[а-яё]+',query,re.I))
+
+def asks_loan_early_repayment(query):
+ return bool(re.search(r'\bплан\b|кредит налич|потребительск',query,re.I)) and bool(re.search(r'закры|погас',query,re.I)) and bool(re.search(r'раньше|досроч|срок',query,re.I))
+
+def asks_youth_card_comparison(query):
+ text=query.lower()
+ return 'старт' in text and 'каждый день' in text and bool(re.search(r'подрост|реб[её]н|дет|выгод|сравн|отлич',text))
+
+def asks_personal_transfer_status(query):
+ return bool(re.search(r'\bмо[йяюеиё]\b|\bмоего\b|\bсво[йяюеи]\b',query,re.I) and re.search(r'перевод|плат[её]ж',query,re.I) and re.search(r'дош[её]л|зачисл|поступ|получ|статус',query,re.I))
+
+def asks_personal_card_status(query):
+ return bool(re.search(r'\bмо[йяюеиё]\b|\bмоего\b|\bсво[йяюеи]\b',query,re.I) and re.search(r'карт',query,re.I) and re.search(r'проверь|активн|статус',query,re.I) and not re.search(r'как\s+активир',query,re.I))
+
+def asks_fabricated_terms(query):
+ return bool(re.search(r'придум|выдум|наугад',query,re.I) and re.search(r'комисс|тариф|ставк|услов',query,re.I))
+
 def asks_deposit_extension(query,history):
  return bool(re.search(r'продл|пролонг',query,re.I) and 'deposit' in product_mentions(query+' '+ ' '.join(x['text'] for x in history)))
 def normalize_history(history):
@@ -96,27 +119,28 @@ class RAGPrototype:
   self.remote=client or GigaClient(); self.retriever=Retriever(root,self.remote)
  def result(self,answer,mode='autopilot',sources=None,**extra):
   return dict(mode=mode,answer=answer,sources=sources or [],note=NOTE,**extra)
+ def specialist(self,query,history,answer,reason,sources=None,draft='Проверить запрос клиента и помочь через защищённый канал.'):
+  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
+  answer=answer.rstrip()+' Специалист подключён в демо-режиме; для реальной помощи используйте поддержку в приложении.'
+  return self.result(answer,mode='copilot',sources=sources or [self.retriever.by_id['G06']],operator_summary=summary,draft=draft,reason=reason,route='human',handoff_status='simulated')
  def handoff(self,query,history,kind='other'):
   source=self.retriever.by_id['G05']; support=self.retriever.by_id['G06']
   sources=[source,support]
   if kind=='child_card_loss':
    sources=[self.retriever.by_id['J04'],support]
-   answer='Если потеряна детская карта «Старт», родителю нужно открыть её в приложении: «Старт» → «Настройки» → «Заблокировать», затем обратиться в поддержку через «Помощь» → «Чат» для перевыпуска. В этом чате карта не блокируется и специалист не подключается.'
+   answer='Если потеряна детская карта «Старт», родителю нужно открыть её в приложении: «Старт» → «Настройки» → «Заблокировать», затем обратиться в поддержку через «Помощь» → «Чат» для перевыпуска. В этом чате карта не блокируется.'
   elif kind=='credentials':
-   answer='Если пароль, ПИН или код стал известен постороннему, прекратите общение с ним, смените пароль через официальный канал и срочно обратитесь в поддержку через «Помощь» → «Чат» в приложении. Не сообщайте новые коды или пароль в этом чате. Здесь я не могу защитить ваш доступ или подключить специалиста.'
+   answer='Если пароль, ПИН или код стал известен постороннему, прекратите общение с ним, смените пароль через официальный канал и срочно обратитесь в поддержку через «Помощь» → «Чат» в приложении. Не сообщайте новые коды или пароль в этом чате. Здесь я не могу защитить ваш доступ.'
   elif kind=='card_loss':
-   answer='Если карта потеряна или украдена, сразу откройте её в приложении и выберите «Настройки» → «Заблокировать», затем обратитесь в поддержку через «Помощь» → «Чат». В этом чате карта не блокируется и специалист не подключается.'
+   answer='Если карта потеряна или украдена, сразу откройте её в приложении и выберите «Настройки» → «Заблокировать», затем обратитесь в поддержку через «Помощь» → «Чат». В этом чате карта не блокируется.'
   else:
-   answer='Я не могу проверить или выполнить такую операцию в этом чате. При неизвестном списании или подозрении на мошенничество сразу заблокируйте карту в приложении и обратитесь в поддержку через «Помощь» → «Чат». Не сообщайте ПИН, CVV, пароль и коды из СМС. Специалист пока не подключён.'
-  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
-  return self.result(answer,mode='copilot',sources=sources,operator_summary=summary,draft='Нужно проверить обстоятельства обращения через защищённый канал. Действия со счётом не выполнены.',reason='Инцидент или запрос действия требует защищённого канала.',route='human',handoff_status='prepared')
+   answer='Я не могу выполнить действие или проверить личную операцию в этом чате. Если вы заметили неизвестное списание или подозреваете мошенничество, заблокируйте карту в приложении и обратитесь в поддержку через «Помощь» → «Чат». Не сообщайте ПИН, CVV, пароль и коды из СМС.'
+  return self.specialist(query,history,answer,'Инцидент или запрос действия требует защищённого канала.',sources,'Нужно проверить обстоятельства обращения через защищённый канал. Действия со счётом не выполнены.')
  def safe_fallback(self,query,history,reason):
   support=self.retriever.by_id['G06']
-  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
-  return self.result('Для ответа нужен специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[support],operator_summary=summary,draft='Проверить вопрос по актуальным условиям и ответить клиенту.',reason=reason,route='human',handoff_status='prepared')
+  return self.specialist(query,history,'Не могу надёжно ответить на этот вопрос автоматически. Обратитесь в поддержку через «Помощь» → «Чат» в приложении.',reason,[support],'Проверить вопрос по актуальным условиям и ответить клиенту.')
  def clarification_handoff(self,query,history):
-  summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user']+[query]))
-  return self.result('Вопрос остаётся неясным. Требуется специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=summary,draft='Пожалуйста, уточните запрос клиента и помогите с решением.',reason='После трёх уточнений вопрос остался неоднозначным.',route='human',handoff_status='prepared')
+  return self.specialist(query,history,'Вопрос остаётся неясным после нескольких уточнений. Обратитесь в поддержку через «Помощь» → «Чат» в приложении.','После трёх уточнений вопрос остался неоднозначным.',[self.retriever.by_id['G06']],'Пожалуйста, уточните запрос клиента и помогите с решением.')
  def ask(self,query,history=None):
   query=query.strip()[:1000]; history=normalize_history(history); started=time.monotonic(); deadline=started+25
   if not query:raise ValueError('Введите вопрос')
@@ -126,14 +150,29 @@ class RAGPrototype:
    out=self.result('Здравствуйте! Помогу разобраться с картами, сбережениями, кредитом и переводами Демо-банка. О чём хотите узнать?',reason='Приветствие.',route='answer'); retrieval={'mode':'greeting_rule','retrieved_ids':[]}
   elif kind:
    out=self.handoff(query,history,kind); retrieval={'mode':'safety_rule','retrieved_ids':[]}
+  elif needs_context(query,history):
+   answer='Уточните, пожалуйста, что именно должно быть готово: карта, заявка или перевод?' if re.search(r'готов',query,re.I) else 'Уточните, пожалуйста, о каком продукте или действии вы хотите узнать подробнее?'
+   out=self.result(answer,mode='clarify',clarifying_choices=['Карта','Заявка','Перевод'] if re.search(r'готов',query,re.I) else ['Карта','Счёт или вклад','Кредит'],reason='В вопросе нет названия предмета; нужен контекст.',route='clarify'); retrieval={'mode':'context_rule','retrieved_ids':[]}
+  elif outside_bank_scope(query):
+   out=self.result('Я помогаю с продуктами и обслуживанием Демо-банка. Переводить фразы на другие языки не могу.',sources=[self.retriever.by_id['G01']],reason='Вопрос вне области банковской помощи.',route='answer'); retrieval={'mode':'scope_rule','retrieved_ids':['G01']}
+  elif asks_fabricated_terms(query):
+   out=self.specialist(query,history,'Не буду придумывать комиссию или условие, которого нет в подтверждённых материалах. Уточните действующие условия через «Помощь» → «Чат» в приложении.','Запрошено неподтверждённое условие.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'terms_rule','retrieved_ids':['G03','G06']}
+  elif asks_personal_transfer_status(query):
+   out=self.specialist(query,history,'Я не вижу ваш перевод и не могу подтвердить его зачисление. Проверьте сведения о переводе в приложении; если нужно подтвердить статус, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки конкретного перевода нужны личные данные.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G03','G06']}
+  elif asks_personal_card_status(query):
+   out=self.specialist(query,history,'Я не вижу состояние вашей карты. Откройте её в приложении и проверьте статус; если он неясен, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки состояния конкретной карты нужны личные данные.',[self.retriever.by_id['G05'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G05','G06']}
   elif unsupported_scope(query):
    out=self.safe_fallback(query,history,unsupported_scope(query)); retrieval={'mode':'scope_rule','retrieved_ids':[]}
+  elif asks_loan_early_repayment(query):
+   out=self.result('Да. Кредит «План» можно полностью или частично погасить досрочно без отдельной комиссии. В приложении откройте «План» → «Досрочное погашение», выберите сумму и дату, пополните счёт и подтвердите заявку. Проценты рассчитываются за фактическое пользование долгом; в этом чате я не подаю заявку и не подтверждаю погашение.',sources=[self.retriever.by_id['L04']],reason='Ответ по условиям досрочного погашения кредита «План».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['L04']}
+  elif asks_youth_card_comparison(query):
+   out=self.result('Если подростку ещё нет 18 лет, из этих двух карт ему подходит «Старт»: она доступна с 6 до 17 лет и управляется родителем. «Каждый день» доступна с 18 лет. Обслуживание обеих карт бесплатное. У «Старта» нет кэшбэка, а «Каждый день» даёт 1% за обычные покупки, до 1000 ₽ в месяц. Выбор зависит от возраста и того, нужен ли родительский контроль.',sources=[self.retriever.by_id['J01'],self.retriever.by_id['D01']],reason='Сравнение двух подтверждённых продуктов.',route='answer'); retrieval={'mode':'comparison_rule','retrieved_ids':['J01','D01']}
   elif asks_deposit_extension(query,history):
    sources=[self.retriever.by_id[i] for i in ('V01','V02','V03')]
    out=self.result('Автоматического продления вклада «Горизонт» нет. В конце срока сумма и проценты поступают на выбранный счёт. Если захотите открыть новый вклад, проверьте его условия в приложении на тот момент: прежнюю ставку и другие условия я не могу обещать.',sources=sources,reason='Ответ по подтверждённым условиям вклада.',route='answer')
    retrieval={'mode':'policy_rule','retrieved_ids':[a['id'] for a in sources]}
   elif re.search(r'оператор|живого человека|позови.{0,15}сотрудник',query,re.I):
-   out=self.result('Для ответа нужен специалист. Обращение подготовлено для передачи, но в этом демо оператор не подключён.',mode='copilot',sources=[self.retriever.by_id['G06']],operator_summary=redact_summary(query),draft='Клиент просит помощь специалиста.',reason='Запрос помощи специалиста.',route='human',handoff_status='prepared'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+   out=self.specialist(query,history,'Подключаю специалиста для дальнейшей помощи.','Клиент запросил специалиста.',[self.retriever.by_id['G06']],'Клиент просит помощь специалиста.'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
   else:
    docs,retrieval=self.retriever.search(query,history,deadline); usage['embedding_tokens']=retrieval['embedding_tokens']
    try:
