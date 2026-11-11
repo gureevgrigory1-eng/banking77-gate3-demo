@@ -94,7 +94,27 @@ class Tests(unittest.TestCase):
  def test_cash_fee_requires_month_to_date_amount(self):
   response={'route':'answer','answer':'За 120 тысяч возьмут 400 ₽.','source_ids':['D04'],'choices':[]}
   actual=RAGPrototype(client=Fake(response)).ask('Сколько берут за снятие 120 тысяч с «Каждый день» в банкомате Демо-банка?')['answer']
-  self.assertIn('предыдущих снятий',actual);self.assertIn('минимум 90 ₽',actual);self.assertNotIn('возьмут 400 ₽',actual)
+  self.assertIn('сколько уже снято',actual);self.assertIn('минимум 90 ₽',actual);self.assertNotIn('возьмут 400 ₽',actual)
+ def test_cash_fee_uses_explicit_monthly_use_and_minimum(self):
+  p=RAGPrototype(client=Fake(error=True))
+  cases=[
+   ('В этом месяце уже снял 95 тысяч с «Каждый день». Если сейчас снять ещё 6 тысяч в вашем банкомате, сколько комиссия?','90 ₽'),
+   ('В этом месяце по «Каждый день» ещё не снимал. Одним разом хочу снять 120 тысяч в банкомате Демо-банка: какая комиссия?','400 ₽'),
+   ('Уже израсходовал месячные 100 тысяч бесплатного снятия. Сниму 120 тысяч с «Каждый день» — сколько удержат?','2 400 ₽'),
+   ('В этом месяце уже снял 99 999 ₽ с «Каждый день». Хочу снять 1 ₽ в вашем банкомате: какая комиссия?','0 ₽'),
+   ('В этом месяце уже снял 100 000 ₽ с «Каждый день». Хочу снять 4 500 ₽ в вашем банкомате: какая комиссия?','90 ₽'),
+   ('В этом месяце уже снял 100 000 ₽ с «Каждый день». Хочу снять 5 011 ₽ в вашем банкомате: какая комиссия?','100,22 ₽'),
+   ('За текущий месяц уже обналичил 98 000 рублей с «Каждый день». Хочу обналичить 4 тыс. рублей в банкомате Демо-банка: сколько комиссия?','90 ₽'),
+  ]
+  for question,expected in cases:
+   with self.subTest(question=question):
+    r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertEqual(r['retrieval']['mode'],'policy_rule');self.assertIn(expected,r['answer'])
+  other=p.ask('В этом месяце снял 95 тысяч с «Каждый день». Хочу снять 6 тысяч в стороннем банкомате: какая комиссия?')
+  self.assertIn('не указан',other['answer']);self.assertNotIn('90 ₽',other['answer'])
+ def test_meeting_price_is_not_inferred_from_delivery(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for question in ('Встреча с представителем при выдаче «Каждый день» бесплатная?','Сколько стоит встреча с представителем для «Каждый день»?','При оформлении «Каждый день» встреча с представителем стоит ноль рублей?'):
+   r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'D02');self.assertIn('стоимость самой встречи',r['answer']);self.assertNotIn('встреча бесплатная',r['answer'].lower())
  def test_human_request_does_not_claim_connection(self):
   actual=RAGPrototype(client=Fake(error=True)).ask('Позови сотрудника')['answer']
   self.assertIn('не могу подключить',actual);self.assertNotIn('Подключаю специалиста',actual)
