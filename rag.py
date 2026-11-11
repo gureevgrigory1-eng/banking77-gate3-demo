@@ -58,6 +58,45 @@ def asks_cash_over_free_limit(query):
  mentions=product_mentions(query)
  return bool(re.search(r'снят|снима|сним|налич',query,re.I) and re.search(r'сверх|превыш|выше',query,re.I) and re.search(r'бесплатн|лимит|предел',query,re.I) and not any(x in mentions for x in ('credit','junior','savings','deposit','loan')))
 
+MONEY=re.compile(r'(?<!\d)(\d{1,3}(?:[ \u00a0\u202f]?\d{3})+|\d+)\s*(тысяч(?:и|у)?|тыс\.?|₽|руб(?:л[яеёий]*)?)(?!\w)',re.I)
+
+def rubles(text):
+ match=MONEY.search(text)
+ if not match:return None
+ amount=int(re.sub(r'\s','',match.group(1)))
+ return amount*1000 if match.group(2).lower().startswith(('тыс','тысяч')) else amount
+
+def ruble_text(amount):return f'{amount:,}'.replace(',',' ')
+
+def asks_meeting_cost(query):
+ return bool(re.search(r'каждый день',query,re.I) and re.search(r'встреч|представител',query,re.I) and re.search(r'бесплатн|сколько|стоим|сто[яи]т|платн|цен|комисси|ноль\s+рубл|\b0\s*(?:₽|руб)',query,re.I))
+
+def debit_cash_fee_answer(query):
+ """Calculate only when the current withdrawal and prior monthly use are explicit."""
+ if not re.search(r'каждый день',query,re.I) or not re.search(r'снят|снима|сним|налич',query,re.I) or not re.search(r'сколько|какая|комисси|удерж|возьм|спиш',query,re.I):return None
+ if re.search(r'сторонн|чуж[оё]м банкомат|другого банка',query,re.I):
+  return 'В стороннем банкомате может быть собственная комиссия, её размер в базе не указан. Проверьте условия банкомата перед снятием.'
+ operation=re.search(r'(?:снять|сниму|снимаю|снимать|сняти[ея]|обналичить|обналичу)\s*(?:ещ[её]\s+)?'+MONEY.pattern,query,re.I)
+ amount=rubles(operation.group(0)) if operation else None
+ if amount is None:return None
+ prior=None
+ if re.search(r'ещ[её]\s+не\s+снимал|ничего\s+не\s+снимал|пока\s+не\s+снимал|снял[аи]?\s+0\s*(?:₽|руб)',query,re.I):prior=0
+ else:
+  used=re.search(r'(?:уже\s+)?(?:снял[аи]?|снимал[аи]?|снято|обналичил[аи]?|израсходовал[аи]?|использовал[аи]?)\s*.{0,55}?'+MONEY.pattern,query,re.I)
+  if used:prior=rubles(used.group(0))
+  elif re.search(r'(?:уже\s+)?(?:израсходовал|использовал).{0,55}(?:весь|полностью|месячн).{0,30}(?:лимит|бесплатн)',query,re.I):prior=100000
+ if prior is None:
+  return ('В банкоматах Демо-банка первые 100 000 ₽ снятия за календарный месяц бесплатны; '
+          'с превышения — 2%, минимум 90 ₽ за снятие. Для точного расчёта этой операции '
+          'уточните, сколько уже снято в текущем месяце.')
+ excess=max(0,prior+amount-100000)-max(0,prior-100000)
+ fee_kopeks=max(9000,excess*2) if excess else 0
+ if fee_kopeks==0:return f'При уже снятых {ruble_text(prior)} ₽ и новом снятии {ruble_text(amount)} ₽ в банкомате Демо-банка комиссия составит 0 ₽: месячный бесплатный предел 100 000 ₽ не превышен.'
+ fee=ruble_text(fee_kopeks//100)+(f',{fee_kopeks%100:02d}' if fee_kopeks%100 else '')
+ return (f'При уже снятых {ruble_text(prior)} ₽ и новом снятии {ruble_text(amount)} ₽ в банкомате Демо-банка '
+         f'сумма превышения бесплатного месячного предела — {ruble_text(excess)} ₽. '
+         f'Комиссия за эту операцию — {fee} ₽: 2% с превышения, минимум 90 ₽ за снятие.')
+
 def asks_credit_transfer_interest(query):
  return bool(re.search(r'\bзапас\b',query,re.I) and re.search(r'перевод|перевест|перевед|перечисл',query,re.I) and re.search(r'без процент|льгот|процент',query,re.I))
 
@@ -95,6 +134,10 @@ def add_application_eligibility(query,answer,source_ids):
  return answer
 def enforce_material_terms(query,answer,source_ids):
  """Use confirmed article terms for applications and conditional cash fees."""
+ if 'D02' in source_ids and asks_meeting_cost(query):
+  return ('В базе подтверждена бесплатная доставка карты «Каждый день», но стоимость самой '
+          'встречи с представителем не указана. Проверьте её в условиях оформления или через '
+          '«Помощь» → «Чат» в приложении.')
  if 'D02' in source_ids and re.search(r'оформ|получ|заявк',query,re.I):
   return ('Карту «Каждый день» может оформить гражданин РФ от 18 лет с паспортом РФ. '
           'В приложении откройте «Продукты» → «Карты» → «Каждый день» → «Оформить», '
@@ -114,11 +157,9 @@ def enforce_material_terms(query,answer,source_ids):
           'Выберите собственный счёт списания и сумму от 10 000 ₽, проверьте срок 6 месяцев '
           'и ставку 10% годовых, затем подтвердите условия. В этом чате я не принимаю деньги '
           'и не заключаю договор.')
- if 'D04' in source_ids and re.search(r'сколько|какая|комисси|берут',query,re.I) and re.search(r'снят|снима|сним|налич',query,re.I) and re.search(r'\d[\d\s\u00a0]*(?:тысяч|тыс|₽|руб)',query,re.I):
-  return ('Точная комиссия зависит от того, сколько вы уже сняли по карте «Каждый день» '
-          'в этом календарном месяце. В банкоматах Демо-банка первые 100 000 ₽ за месяц '
-          'без комиссии; с превышения — 2%, минимум 90 ₽ за снятие. Без суммы предыдущих '
-          'снятий я не могу назвать итоговую комиссию за эту операцию.')
+ if 'D04' in source_ids:
+  policy=debit_cash_fee_answer(query)
+  if policy:return policy
  return answer
 def add_credit_cost_context(query,answer,source_ids):
  if 'C03' in source_ids and re.search(r'льгот',query,re.I) and re.search(r'сколько.{0,20}дн|сколько.{0,20}дней',query,re.I) and not re.search(r'полност',answer,re.I):
@@ -238,6 +279,10 @@ class RAGPrototype:
    out=self.result('Точную дату и сумму платежа по карте «Запас» смотрите в выписке приложения. Для сохранения льготного периода нужно полностью погасить сумму по выписке до указанной даты; в этом чате я не вижу вашу выписку.',sources=[self.retriever.by_id['C03']],reason='Порядок проверки даты платежа по карте «Запас».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['C03']}
   elif asks_no_min_balance(query):
    out=self.result('Нет. Для карты «Каждый день» нет требования держать минимальный остаток. Выпуск и обслуживание — 0 ₽ в месяц.',sources=[self.retriever.by_id['D01']],reason='Условия обслуживания карты «Каждый день».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D01']}
+  elif asks_meeting_cost(query):
+   out=self.result('В базе подтверждена бесплатная доставка карты «Каждый день», но стоимость самой встречи с представителем не указана. Проверьте её в условиях оформления или через «Помощь» → «Чат» в приложении.',sources=[self.retriever.by_id['D02'],self.retriever.by_id['G06']],reason='Стоимость встречи не подтверждена базой.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D02','G06']}
+  elif debit_cash_fee_answer(query):
+   out=self.result(debit_cash_fee_answer(query),sources=[self.retriever.by_id['D04']],reason='Расчёт комиссии по подтверждённым условиям.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04']}
   elif asks_cash_over_free_limit(query):
    out=self.result('По карте «Каждый день» в банкоматах Демо-банка можно снять до 100 000 ₽ за календарный месяц без комиссии. С суммы сверх этого предела комиссия 2%, минимум 90 ₽ за снятие. У карты «Запас» такого бесплатного предела нет: снятие стоит 3% суммы плюс 300 ₽, а проценты начисляются со дня операции.',sources=[self.retriever.by_id['D04'],self.retriever.by_id['C04']],reason='Условия снятия наличных по двум картам.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04','C04']}
   elif asks_credit_transfer_interest(query):
