@@ -78,10 +78,14 @@ def asks_child_card_activation(query):
  return bool(re.search(r'активир',query,re.I) and re.search(r'старт|детск|реб[её]н',query,re.I))
 def add_application_eligibility(query,answer,source_ids):
  if not re.search(r'оформ|подать.{0,12}заявк|открыть',query,re.I):return answer
- ages={'D02':'от 18 лет','C02':'от 21 до 65 лет','S02':'от 18 лет','L02':'от 21 до 65 лет','V02':'от 18 лет'}
- for source_id,age in ages.items():
+ ages={'D02':('от 18 лет',('18',)),'C02':('от 21 до 65 лет',('21','65')),'S02':('от 18 лет',('18',)),'L02':('от 21 до 65 лет',('21','65')),'V02':('от 18 лет',('18',))}
+ for source_id,(age,limits) in ages.items():
   if source_id not in source_ids:continue
-  if not re.search(r'\b(?:18|21|65)\b',answer):answer=answer.rstrip()+' Условие по возрасту: '+age+'.'
+  if '18' in limits:answer=re.sub(r'старше\s+18\s+лет', 'не моложе 18 лет',answer,flags=re.I)
+  if '21' in limits:
+   answer=re.sub(r'старше\s+21\s+(?:года|лет)', 'не моложе 21 года',answer,flags=re.I)
+   answer=re.sub(r'младше\s+65\s+лет', 'не старше 65 лет',answer,flags=re.I)
+  if not all(re.search(r'\b'+limit+r'\b',answer) for limit in limits):answer=answer.rstrip()+' Условие по возрасту: '+age+'.'
   if source_id=='S02' and not re.search(r'паспорт|идентификац',answer,re.I):
    answer=answer.rstrip()+' Новому клиенту сначала нужна идентификация по паспорту РФ.'
   return answer
