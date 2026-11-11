@@ -72,6 +72,26 @@ def asks_personal_loan_payment(query):
 
 def asks_deposit_extension(query,history):
  return bool(re.search(r'продл|пролонг',query,re.I) and 'deposit' in product_mentions(query+' '+ ' '.join(x['text'] for x in history)))
+def asks_currency_deposit(query):
+ return bool(re.search(r'вклад|депозит',query,re.I) and re.search(r'валют|доллар|\busd\b',query,re.I))
+def asks_child_card_activation(query):
+ return bool(re.search(r'активир',query,re.I) and re.search(r'старт|детск|реб[её]н',query,re.I))
+def add_application_eligibility(query,answer,source_ids):
+ if not re.search(r'оформ|подать.{0,12}заявк|открыть',query,re.I):return answer
+ ages={'D02':'от 18 лет','C02':'от 21 до 65 лет','S02':'от 18 лет','L02':'от 21 до 65 лет','V02':'от 18 лет'}
+ for source_id,age in ages.items():
+  if source_id not in source_ids:continue
+  if not re.search(r'\b(?:18|21|65)\b',answer):answer=answer.rstrip()+' Условие по возрасту: '+age+'.'
+  if source_id=='S02' and not re.search(r'паспорт|идентификац',answer,re.I):
+   answer=answer.rstrip()+' Новому клиенту сначала нужна идентификация по паспорту РФ.'
+  return answer
+ return answer
+def add_credit_cost_context(query,answer,source_ids):
+ if 'C03' in source_ids and re.search(r'льгот',query,re.I) and re.search(r'сколько.{0,20}дн|сколько.{0,20}дней',query,re.I) and not re.search(r'полност',answer,re.I):
+  answer=answer.rstrip()+' Для сохранения льготы нужно полностью погасить сумму по выписке до указанной в ней даты.'
+ if 'C04' in source_ids and re.search(r'комисси',query,re.I) and re.search(r'налич|снят',query,re.I) and not re.search(r'29\s*%',answer):
+  answer=answer.rstrip()+' На снятие наличных льгота не распространяется: с даты операции начисляются 29% годовых.'
+ return answer
 def normalize_history(history):
  result=[]
  for x in (history or [])[-6:]:
@@ -198,6 +218,10 @@ class RAGPrototype:
    sources=[self.retriever.by_id[i] for i in ('V01','V02','V03')]
    out=self.result('Автоматического продления вклада «Горизонт» нет. В конце срока сумма и проценты поступают на выбранный счёт. Если захотите открыть новый вклад, проверьте его условия в приложении на тот момент: прежнюю ставку и другие условия я не могу обещать.',sources=sources,reason='Ответ по подтверждённым условиям вклада.',route='answer')
    retrieval={'mode':'policy_rule','retrieved_ids':[a['id'] for a in sources]}
+  elif asks_currency_deposit(query):
+   out=self.result('В каталоге Демо-банка валютные вклады не представлены. Из вкладов описан только рублёвый «Горизонт».',sources=[self.retriever.by_id['G01'],self.retriever.by_id['V01']],reason='Ответ по каталогу продуктов.',route='answer'); retrieval={'mode':'catalog_rule','retrieved_ids':['G01','V01']}
+  elif asks_child_card_activation(query):
+   out=self.result('После получения карты «Старт» родитель активирует её в своём приложении в разделе детской карты.',sources=[self.retriever.by_id['J04']],reason='Ответ по инструкции для детской карты.',route='answer'); retrieval={'mode':'activation_rule','retrieved_ids':['J04']}
   elif re.search(r'оператор|живого человека|позови.{0,15}сотрудник',query,re.I):
    out=self.specialist(query,history,'Подключаю специалиста для дальнейшей помощи.','Клиент запросил специалиста.',[self.retriever.by_id['G06']],'Клиент просит помощь специалиста.'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
   else:
@@ -211,7 +235,9 @@ class RAGPrototype:
     if data['route'] in ('risk','human'):out=self.handoff(query,history,kind or 'other')
     elif data['route'] in ('clarify','unavailable') and clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
     elif data['route'] in ('unavailable','personal'):out=self.safe_fallback(query,history,'Личные сведения или условия отсутствуют в подтверждённой базе.')
-    else:out=self.result(data['answer'],mode='autopilot' if data['route']=='answer' else 'clarify',sources=sources,clarifying_choices=data['choices'][:3],reason='Ответ по условиям продуктов.' if data['route']=='answer' else 'Нужно уточнение или недоступны личные сведения.',route=data['route'])
+    else:
+     answer=add_credit_cost_context(query,add_application_eligibility(query,data['answer'],ids),ids) if data['route']=='answer' else data['answer']
+     out=self.result(answer,mode='autopilot' if data['route']=='answer' else 'clarify',sources=sources,clarifying_choices=data['choices'][:3],reason='Ответ по условиям продуктов.' if data['route']=='answer' else 'Нужно уточнение или недоступны личные сведения.',route=data['route'])
    except (GigaError,KeyError,TypeError,ValueError) as exc:
     if clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
     else:out=self.safe_fallback(query,history,'Автоматический ответ временно недоступен; сведения из поиска не проверены.')

@@ -64,6 +64,23 @@ class Tests(unittest.TestCase):
  def test_youth_cards_are_compared_by_age(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Что выгоднее подростку: Старт или Каждый день?')
   self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'J01','D01'});self.assertIn('18 лет',r['answer'])
+ def test_application_answer_includes_age_from_cited_article(self):
+  cases=[('А как её оформить?','D02','18 лет',[{'role':'user','text':'Расскажите про карту Каждый день'}]),('Как подать заявку на карту Запас?','C02','21 до 65 лет',[]),('Как открыть Копилку?','S02','18 лет',[])]
+  for query,source_id,age,history in cases:
+   p=RAGPrototype(client=Fake({'route':'answer','answer':'Откройте продукт в приложении.','source_ids':[source_id],'choices':[]}))
+   r=p.ask(query,history);self.assertEqual(r['route'],'answer');self.assertIn(age,r['answer'])
+   if source_id=='S02':self.assertIn('паспорту РФ',r['answer'])
+ def test_currency_deposit_is_answered_from_catalog(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Есть ли у вас валютный вклад в долларах?')
+  self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'G01','V01'});self.assertIn('не представлены',r['answer'])
+ def test_child_card_activation_does_not_invent_pin_step(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Как активировать детскую карту Старт?')
+  self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'J04');self.assertIn('родитель',r['answer']);self.assertNotIn('ПИН',r['answer'])
+ def test_credit_cost_answer_includes_material_conditions(self):
+  cases=[('Сколько дней действует льгота по кредитной карте?','C03','До 55 дней.','полностью погасить'),('Какая комиссия за наличные с карты Запас?','C04','3% плюс 300 ₽.','29% годовых')]
+  for query,source_id,answer,condition in cases:
+   p=RAGPrototype(client=Fake({'route':'answer','answer':answer,'source_ids':[source_id],'choices':[]}))
+   self.assertIn(condition,p.ask(query)['answer'])
  def test_personal_transfer_status_requires_human_route(self):
   r=RAGPrototype(client=Fake({'route':'answer','answer':'Ваш перевод дошёл.','source_ids':['G03'],'choices':[]})).ask('Как узнать, что мой перевод действительно дошёл?')
   self.assertEqual(r['route'],'human');self.assertNotIn('Ваш перевод дошёл',r['answer']);self.assertIn('не могу подтвердить',r['answer'])
