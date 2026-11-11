@@ -73,6 +73,27 @@ class Tests(unittest.TestCase):
  def test_personal_card_status_gives_next_step(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Проверьте, активна ли сейчас моя карта.')
   self.assertEqual(r['route'],'human');self.assertIn('проверьте статус',r['answer'])
+ def test_cash_limit_and_credit_transfer_have_grounded_answers(self):
+  p=RAGPrototype(client=Fake(error=True))
+  cash=p.ask('Какая комиссия за снятие сверх бесплатного предела?')
+  self.assertEqual(cash['route'],'answer');self.assertEqual({a['id'] for a in cash['sources']},{'D04','C04'});self.assertIn('2%',cash['answer'])
+  transfer=p.ask('Можно ли перевести деньги с карты Запас без процентов?')
+  self.assertEqual(transfer['route'],'answer');self.assertEqual(transfer['sources'][0]['id'],'C04');self.assertIn('29%',transfer['answer'])
+ def test_left_child_card_in_shop_is_urgent(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Карту «Старт» забыли в магазине, что сделать родителю первым?')
+  self.assertEqual(r['route'],'human');self.assertEqual(r['sources'][0]['id'],'J04');self.assertIn('Заблокировать',r['answer'])
+ def test_minimum_balance_due_date_and_personal_payment(self):
+  p=RAGPrototype(client=Fake(error=True))
+  balance=p.ask('Для карты «Каждый день» нужно держать минимальный остаток?')
+  self.assertEqual(balance['route'],'answer');self.assertEqual(balance['sources'][0]['id'],'D01')
+  due=p.ask('Как узнать точную дату платежа по кредитке «Запас»?')
+  self.assertEqual(due['route'],'answer');self.assertEqual(due['sources'][0]['id'],'C03');self.assertIn('выписке',due['answer'])
+  personal=p.ask('У меня сегодня спишется платёж по «Плану»?')
+  self.assertEqual(personal['route'],'human');self.assertIn('не могу подтвердить',personal['answer'])
+ def test_clear_nonbank_questions_get_short_refusal(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for question in ('Посоветуйте фильм для семейного вечера.','Какая температура будет завтра в Казани?'):
+   r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertIn('не помогу',r['answer'])
  def test_history_compatibility(self):
   self.assertEqual(normalize_history([{'text':'Копилка'},{'role':'system','text':'bad'}])[0]['role'],'user');self.assertEqual(normalize_history([{'role':'system','text':'bad'}])[0]['role'],'user')
   self.assertEqual(normalize_history([{'role':'assistant','text':'Уточните','route':'clarify'}])[0]['route'],'clarify')
