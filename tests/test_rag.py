@@ -70,6 +70,14 @@ class Tests(unittest.TestCase):
    p=RAGPrototype(client=Fake({'route':'answer','answer':'Откройте продукт в приложении.','source_ids':[source_id],'choices':[]}))
    r=p.ask(query,history);self.assertEqual(r['route'],'answer');self.assertIn(age,r['answer'])
    if source_id=='S02':self.assertIn('паспорту РФ',r['answer'])
+ def test_application_age_boundary_is_inclusive(self):
+  answer='Вы должны быть гражданином РФ старше 18 лет и предъявить паспорт.'
+  history=[{'role':'user','text':'Расскажите про карту Каждый день'}]
+  p=RAGPrototype(client=Fake({'route':'answer','answer':answer,'source_ids':['D02'],'choices':[]}))
+  actual=p.ask('А как её оформить?',history)['answer']
+  self.assertIn('не моложе 18 лет',actual);self.assertNotIn('старше 18 лет',actual)
+  p=RAGPrototype(client=Fake({'route':'answer','answer':'Карта доступна до 65 лет.','source_ids':['C02'],'choices':[]}))
+  self.assertIn('от 21 до 65 лет',p.ask('Как подать заявку на карту Запас?')['answer'])
  def test_currency_deposit_is_answered_from_catalog(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Есть ли у вас валютный вклад в долларах?')
   self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'G01','V01'});self.assertIn('не представлены',r['answer'])
