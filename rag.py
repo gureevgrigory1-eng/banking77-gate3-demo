@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parent
 NOTE='Информация относится к продуктам Демо-банка. Операции со счетами в этом чате недоступны.'
 ALIASES={'debit':['каждый день','дебетов','дебетовая','зарплатн'],'credit':['запас','кредитн','кредитка'],'junior':['старт','детск','ребен','ребён','школьн','подрост'],'savings':['копилк','накопительн'],'deposit':['горизонт','вклад','депозит'],'loan':['план','кредит налич','потребительск']}
 RISK=re.compile(r'мошенн|украл|украден|потерял.{0,25}карт|потеряна.{0,15}карт|потерял.{0,15}телефон|не\s+(?:узнаю|совершал|делал|проводил|подтверждал|покупал)|незнаком.{0,20}(?:плат|спис|перев)|неизвестн.{0,20}(?:плат|спис|перев)|без моего|подозрительн.{0,20}(?:спис|перев|операц)|(?:сообщил|передал|назвал|отправил).{0,30}(?:код|парол|cvv|пин)|(?:списали|сняли).{0,25}(?:дважды|два раза)|(?:переведи|отправь|перечисли)\s+(?:мне\s+)?(?:деньги|\d)|(?:оформи|выдай)\s+(?:мне\s+)?кредит|(?:заблокируй|разблокируй).{0,20}карт|(?:закрой|открой).{0,20}(?:сч[её]т|вклад)|stolen|fraud|unrecognised|unauthorized',re.I)
-CARD_LOSS=re.compile(r'(?:карт.{0,40}(?:потер|украд|пропал)|(?:потер|украд|пропал).{0,40}карт)',re.I)
+CARD_LOSS=re.compile(r'(?:карт.{0,40}(?:потер|украд|пропал|забыл)|(?:потер|украд|пропал|забыл).{0,40}карт)',re.I)
 CREDENTIAL_RISK=re.compile(r'(?:кто-то|посторон|незнаком|мошенн).{0,45}(?:парол|пин|cvv|код)|(?:парол|пин|cvv|код).{0,45}(?:знает|узнал|передал|назвал|сообщил|ут[её]к|посторон)',re.I)
 GREETING=re.compile(r'^(?:привет(?:ствую)?|здравствуйте|здравствуй(?:те)?|доброе утро|добрый день|добрый вечер)[\s!?.]*$',re.I)
 
@@ -36,7 +36,7 @@ def needs_context(query,history):
  return bool(re.search(r'\b(оно|она|он|е[её]|это|этот|эту|этой|него|не[её]|ней|там)\b|\b(?:сколько|долго).{0,20}ждать\b',query,re.I))
 
 def outside_bank_scope(query):
- return bool(re.search(r'\bперевед(?:ите|и)\b.{0,45}\b(?:фраз[уы]|предложени[ея]|текст)\b.{0,45}\bна\s+[а-яё]+',query,re.I))
+ return bool(re.search(r'\bперевед(?:ите|и)\b.{0,45}\b(?:фраз[уы]|предложени[ея]|текст)\b.{0,45}\bна\s+[а-яё]+|посовет.{0,30}фильм|\b(?:погод|температур).{0,60}\b(?:завтра|сегодня|казан)',query,re.I))
 
 def asks_loan_early_repayment(query):
  return bool(re.search(r'\bплан\b|кредит налич|потребительск',query,re.I)) and bool(re.search(r'закры|погас',query,re.I)) and bool(re.search(r'раньше|досроч|срок',query,re.I))
@@ -53,6 +53,22 @@ def asks_personal_card_status(query):
 
 def asks_fabricated_terms(query):
  return bool(re.search(r'придум|выдум|наугад',query,re.I) and re.search(r'комисс|тариф|ставк|услов',query,re.I))
+
+def asks_cash_over_free_limit(query):
+ mentions=product_mentions(query)
+ return bool(re.search(r'снят|снима|сним|налич',query,re.I) and re.search(r'сверх|превыш|выше',query,re.I) and re.search(r'бесплатн|лимит|предел',query,re.I) and not any(x in mentions for x in ('credit','junior','savings','deposit','loan')))
+
+def asks_credit_transfer_interest(query):
+ return bool(re.search(r'\bзапас\b',query,re.I) and re.search(r'перевод|перевест|перевед|перечисл',query,re.I) and re.search(r'без процент|льгот|процент',query,re.I))
+
+def asks_no_min_balance(query):
+ return bool(re.search(r'каждый день',query,re.I) and re.search(r'минимальн.{0,18}остат|обязательн.{0,18}остат|держать.{0,18}остат',query,re.I))
+
+def asks_credit_due_date(query):
+ return bool(re.search(r'\bзапас\b|кредитк',query,re.I) and re.search(r'дат.{0,15}плат[её]ж|плат[её]ж.{0,15}дат',query,re.I) and re.search(r'как|где|посмотр|узна',query,re.I))
+
+def asks_personal_loan_payment(query):
+ return bool(re.search(r'\bплан[ауеом]*\b|кредит',query,re.I) and re.search(r'у меня|мо[йяё]|сво[йяё]',query,re.I) and re.search(r'сегодня|завтра|текущ',query,re.I) and re.search(r'спиш|плат[её]ж',query,re.I))
 
 def asks_deposit_extension(query,history):
  return bool(re.search(r'продл|пролонг',query,re.I) and 'deposit' in product_mentions(query+' '+ ' '.join(x['text'] for x in history)))
@@ -154,13 +170,24 @@ class RAGPrototype:
    answer='Уточните, пожалуйста, что именно должно быть готово: карта, заявка или перевод?' if re.search(r'готов',query,re.I) else 'Уточните, пожалуйста, о каком продукте или действии вы хотите узнать подробнее?'
    out=self.result(answer,mode='clarify',clarifying_choices=['Карта','Заявка','Перевод'] if re.search(r'готов',query,re.I) else ['Карта','Счёт или вклад','Кредит'],reason='В вопросе нет названия предмета; нужен контекст.',route='clarify'); retrieval={'mode':'context_rule','retrieved_ids':[]}
   elif outside_bank_scope(query):
-   out=self.result('Я помогаю с продуктами и обслуживанием Демо-банка. Переводить фразы на другие языки не могу.',sources=[self.retriever.by_id['G01']],reason='Вопрос вне области банковской помощи.',route='answer'); retrieval={'mode':'scope_rule','retrieved_ids':['G01']}
+   answer='Я помогаю с продуктами и обслуживанием Демо-банка. Переводить фразы на другие языки не могу.' if re.search(r'перевед',query,re.I) else 'Я помогаю с продуктами и обслуживанием Демо-банка. С этим вопросом не помогу.'
+   out=self.result(answer,sources=[self.retriever.by_id['G01']],reason='Вопрос вне области банковской помощи.',route='answer'); retrieval={'mode':'scope_rule','retrieved_ids':['G01']}
   elif asks_fabricated_terms(query):
    out=self.specialist(query,history,'Не буду придумывать комиссию или условие, которого нет в подтверждённых материалах. Уточните действующие условия через «Помощь» → «Чат» в приложении.','Запрошено неподтверждённое условие.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'terms_rule','retrieved_ids':['G03','G06']}
   elif asks_personal_transfer_status(query):
    out=self.specialist(query,history,'Я не вижу ваш перевод и не могу подтвердить его зачисление. Проверьте сведения о переводе в приложении; если нужно подтвердить статус, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки конкретного перевода нужны личные данные.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G03','G06']}
   elif asks_personal_card_status(query):
    out=self.specialist(query,history,'Я не вижу состояние вашей карты. Откройте её в приложении и проверьте статус; если он неясен, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки состояния конкретной карты нужны личные данные.',[self.retriever.by_id['G05'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G05','G06']}
+  elif asks_personal_loan_payment(query):
+   out=self.specialist(query,history,'Я не вижу ваш график и не могу подтвердить, спишется ли платёж сегодня. Проверьте дату и сумму в графике кредита «План» в приложении; если нужна помощь, откройте «Помощь» → «Чат».','Для проверки конкретного платежа нужен личный график.',[self.retriever.by_id['L03'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['L03','G06']}
+  elif asks_credit_due_date(query):
+   out=self.result('Точную дату и сумму платежа по карте «Запас» смотрите в выписке приложения. Для сохранения льготного периода нужно полностью погасить сумму по выписке до указанной даты; в этом чате я не вижу вашу выписку.',sources=[self.retriever.by_id['C03']],reason='Порядок проверки даты платежа по карте «Запас».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['C03']}
+  elif asks_no_min_balance(query):
+   out=self.result('Нет. Для карты «Каждый день» нет требования держать минимальный остаток. Выпуск и обслуживание — 0 ₽ в месяц.',sources=[self.retriever.by_id['D01']],reason='Условия обслуживания карты «Каждый день».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D01']}
+  elif asks_cash_over_free_limit(query):
+   out=self.result('По карте «Каждый день» в банкоматах Демо-банка можно снять до 100 000 ₽ за календарный месяц без комиссии. С суммы сверх этого предела комиссия 2%, минимум 90 ₽ за снятие. У карты «Запас» такого бесплатного предела нет: снятие стоит 3% суммы плюс 300 ₽, а проценты начисляются со дня операции.',sources=[self.retriever.by_id['D04'],self.retriever.by_id['C04']],reason='Условия снятия наличных по двум картам.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04','C04']}
+  elif asks_credit_transfer_interest(query):
+   out=self.result('Нет, на переводы с кредитной карты «Запас» льготный период не распространяется: проценты 29% годовых начисляются со дня операции. Комиссия за такой перевод в базе не указана; проверьте её в приложении.',sources=[self.retriever.by_id['C04']],reason='Условия перевода с кредитной карты «Запас».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['C04']}
   elif unsupported_scope(query):
    out=self.safe_fallback(query,history,unsupported_scope(query)); retrieval={'mode':'scope_rule','retrieved_ids':[]}
   elif asks_loan_early_repayment(query):
