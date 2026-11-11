@@ -77,6 +77,9 @@ def asks_currency_deposit(query):
 def asks_child_card_activation(query):
  return bool(re.search(r'активир',query,re.I) and re.search(r'старт|детск|реб[её]н',query,re.I))
 def add_application_eligibility(query,answer,source_ids):
+ # A cited age boundary is inclusive even when the model paraphrases it incorrectly.
+ if any(i in source_ids for i in ('D01','D02','S02','V02')):
+  answer=re.sub(r'старше\s+18\s+лет', 'от 18 лет',answer,flags=re.I)
  if not re.search(r'оформ|подать.{0,12}заявк|открыть',query,re.I):return answer
  ages={'D02':('от 18 лет',('18',)),'C02':('от 21 до 65 лет',('21','65')),'S02':('от 18 лет',('18',)),'L02':('от 21 до 65 лет',('21','65')),'V02':('от 18 лет',('18',))}
  for source_id,(age,limits) in ages.items():
@@ -89,6 +92,33 @@ def add_application_eligibility(query,answer,source_ids):
   if source_id=='S02' and not re.search(r'паспорт|идентификац',answer,re.I):
    answer=answer.rstrip()+' Новому клиенту сначала нужна идентификация по паспорту РФ.'
   return answer
+ return answer
+def enforce_material_terms(query,answer,source_ids):
+ """Use confirmed article terms for applications and conditional cash fees."""
+ if 'D02' in source_ids and re.search(r'оформ|получ|заявк',query,re.I):
+  return ('Карту «Каждый день» может оформить гражданин РФ от 18 лет с паспортом РФ. '
+          'В приложении откройте «Продукты» → «Карты» → «Каждый день» → «Оформить», '
+          'укажите ФИО, телефон и адрес доставки, проверьте условия и выберите встречу с представителем. '
+          'Доставка бесплатная, занимает 2–5 рабочих дней после подтверждения заявки. '
+          'На встрече предъявите оригинал паспорта. В этом чате я не отправляю заявку.')
+ if 'J02' in source_ids and re.search(r'оформ|получ|заявк|документ',query,re.I):
+  return ('Заявку на карту «Старт» для ребёнка от 6 до 17 лет подаёт родитель или законный '
+          'представитель с дебетовой картой Демо-банка. В его приложении откройте '
+          '«Продукты» → «Карты» → «Старт» → «Оформить ребёнку». Нужны паспорт родителя '
+          'и свидетельство о рождении ребёнка; если ребёнок уже получил паспорт, нужны также '
+          'его паспортные данные. Доставка бесплатная, 2–5 рабочих дней после подтверждения '
+          'заявки. В этом чате я не принимаю документы и не оформляю карту.')
+ if 'V02' in source_ids and re.search(r'открыть|оформ|заявк',query,re.I):
+  return ('Вклад «Горизонт» доступен гражданам РФ от 18 лет после идентификации по паспорту РФ. '
+          'В приложении откройте «Продукты» → «Сбережения» → «Горизонт» → «Открыть вклад». '
+          'Выберите собственный счёт списания и сумму от 10 000 ₽, проверьте срок 6 месяцев '
+          'и ставку 10% годовых, затем подтвердите условия. В этом чате я не принимаю деньги '
+          'и не заключаю договор.')
+ if 'D04' in source_ids and re.search(r'сколько|какая|комисси|берут',query,re.I) and re.search(r'снят|снима|сним|налич',query,re.I) and re.search(r'\d[\d\s\u00a0]*(?:тысяч|тыс|₽|руб)',query,re.I):
+  return ('Точная комиссия зависит от того, сколько вы уже сняли по карте «Каждый день» '
+          'в этом календарном месяце. В банкоматах Демо-банка первые 100 000 ₽ за месяц '
+          'без комиссии; с превышения — 2%, минимум 90 ₽ за снятие. Без суммы предыдущих '
+          'снятий я не могу назвать итоговую комиссию за эту операцию.')
  return answer
 def add_credit_cost_context(query,answer,source_ids):
  if 'C03' in source_ids and re.search(r'льгот',query,re.I) and re.search(r'сколько.{0,20}дн|сколько.{0,20}дней',query,re.I) and not re.search(r'полност',answer,re.I):
@@ -227,7 +257,7 @@ class RAGPrototype:
   elif asks_child_card_activation(query):
    out=self.result('После получения карты «Старт» родитель активирует её в своём приложении в разделе детской карты.',sources=[self.retriever.by_id['J04']],reason='Ответ по инструкции для детской карты.',route='answer'); retrieval={'mode':'activation_rule','retrieved_ids':['J04']}
   elif re.search(r'оператор|живого человека|позови.{0,15}сотрудник',query,re.I):
-   out=self.specialist(query,history,'Подключаю специалиста для дальнейшей помощи.','Клиент запросил специалиста.',[self.retriever.by_id['G06']],'Клиент просит помощь специалиста.'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+   out=self.specialist(query,history,'В этом демо я не могу подключить сотрудника. Для помощи откройте в приложении «Помощь» → «Чат».','Клиент запросил специалиста.',[self.retriever.by_id['G06']],'Клиент просит помощь специалиста.'); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
   else:
    docs,retrieval=self.retriever.search(query,history,deadline); usage['embedding_tokens']=retrieval['embedding_tokens']
    try:
@@ -240,7 +270,8 @@ class RAGPrototype:
     elif data['route'] in ('clarify','unavailable') and clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
     elif data['route'] in ('unavailable','personal'):out=self.safe_fallback(query,history,'Личные сведения или условия отсутствуют в подтверждённой базе.')
     else:
-     answer=add_credit_cost_context(query,add_application_eligibility(query,data['answer'],ids),ids) if data['route']=='answer' else data['answer']
+     answer=(enforce_material_terms(query,add_credit_cost_context(query,add_application_eligibility(query,data['answer'],ids),ids),ids)
+             if data['route']=='answer' else data['answer'])
      out=self.result(answer,mode='autopilot' if data['route']=='answer' else 'clarify',sources=sources,clarifying_choices=data['choices'][:3],reason='Ответ по условиям продуктов.' if data['route']=='answer' else 'Нужно уточнение или недоступны личные сведения.',route=data['route'])
    except (GigaError,KeyError,TypeError,ValueError) as exc:
     if clarification_streak(history)>=3:out=self.clarification_handoff(query,history)

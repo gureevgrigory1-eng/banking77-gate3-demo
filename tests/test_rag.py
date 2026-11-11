@@ -75,9 +75,29 @@ class Tests(unittest.TestCase):
   history=[{'role':'user','text':'Расскажите про карту Каждый день'}]
   p=RAGPrototype(client=Fake({'route':'answer','answer':answer,'source_ids':['D02'],'choices':[]}))
   actual=p.ask('А как её оформить?',history)['answer']
-  self.assertIn('не моложе 18 лет',actual);self.assertNotIn('старше 18 лет',actual)
+  self.assertIn('от 18 лет',actual);self.assertNotIn('старше 18 лет',actual)
   p=RAGPrototype(client=Fake({'route':'answer','answer':'Карта доступна до 65 лет.','source_ids':['C02'],'choices':[]}))
   self.assertIn('от 21 до 65 лет',p.ask('Как подать заявку на карту Запас?')['answer'])
+ def test_article_boundaries_and_material_application_terms(self):
+  cases=[
+   ('Что такое карта Каждый день?','D01','Для граждан РФ старше 18 лет.',('от 18 лет',),('старше 18 лет',)),
+   ('Как оформить дебетовую карту Каждый день?','D02','Встреча бесплатная.',('Доставка бесплатная','паспортом РФ'),('Встреча бесплатная',)),
+   ('Как оформить карту ребёнку?','J02','Паспорт ребёнка нужен, если ему исполнилось 14 лет.',('с дебетовой картой','если ребёнок уже получил паспорт'),('исполнилось 14',)),
+   ('Как открыть вклад Горизонт?','V02','Откройте вклад в приложении.',('гражданам РФ','идентификации по паспорту РФ'),()),
+  ]
+  for query,source_id,model_answer,required,forbidden in cases:
+   with self.subTest(source_id=source_id):
+    result=RAGPrototype(client=Fake({'route':'answer','answer':model_answer,'source_ids':[source_id],'choices':[]})).ask(query)
+    self.assertEqual(result['route'],'answer')
+    for term in required:self.assertIn(term,result['answer'])
+    for term in forbidden:self.assertNotIn(term,result['answer'])
+ def test_cash_fee_requires_month_to_date_amount(self):
+  response={'route':'answer','answer':'За 120 тысяч возьмут 400 ₽.','source_ids':['D04'],'choices':[]}
+  actual=RAGPrototype(client=Fake(response)).ask('Сколько берут за снятие 120 тысяч с «Каждый день» в банкомате Демо-банка?')['answer']
+  self.assertIn('предыдущих снятий',actual);self.assertIn('минимум 90 ₽',actual);self.assertNotIn('возьмут 400 ₽',actual)
+ def test_human_request_does_not_claim_connection(self):
+  actual=RAGPrototype(client=Fake(error=True)).ask('Позови сотрудника')['answer']
+  self.assertIn('не могу подключить',actual);self.assertNotIn('Подключаю специалиста',actual)
  def test_currency_deposit_is_answered_from_catalog(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Есть ли у вас валютный вклад в долларах?')
   self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'G01','V01'});self.assertIn('не представлены',r['answer'])
