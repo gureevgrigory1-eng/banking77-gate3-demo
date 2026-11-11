@@ -844,12 +844,18 @@
   },
   {
     "id": "T053",
-    "group": "unknown",
+    "group": "catalog",
     "query": "Есть ли у вас валютный вклад в долларах?",
-    "expected_ids": [],
-    "checks": [],
+    "expected_ids": [
+      "G01",
+      "V01"
+    ],
+    "checks": [
+      "валютн",
+      "не представлен|нет"
+    ],
     "history": [],
-    "expected_route": "abstain"
+    "expected_route": "answer"
   },
   {
     "id": "T054",
