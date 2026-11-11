@@ -1,6 +1,6 @@
 import json,time,unittest
 from unittest.mock import patch
-from rag import RAGPrototype,Retriever,normalize_history,ROOT
+from rag import RAGPrototype,Retriever,normalize_history,ROOT,DEBIT_CASH,debit_cash_fee_answer
 from giga_client import GigaError
 class Fake:
  available=True;provider='GigaChat';model='fake';embedding_model='Embeddings'
@@ -115,6 +115,11 @@ class Tests(unittest.TestCase):
   p=RAGPrototype(client=Fake(error=True))
   for question in ('Встреча с представителем при выдаче «Каждый день» бесплатная?','Сколько стоит встреча с представителем для «Каждый день»?','При оформлении «Каждый день» встреча с представителем стоит ноль рублей?'):
    r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'D02');self.assertIn('стоимость самой встречи',r['answer']);self.assertNotIn('встреча бесплатная',r['answer'].lower())
+ def test_cash_fee_uses_catalog_parameters(self):
+  question='В этом месяце уже снял 49 000 ₽ с «Каждый день». Хочу снять 2 000 ₽ в вашем банкомате: какая комиссия?'
+  with patch.dict(DEBIT_CASH,{'cash_free_month':50000,'cash_over_pct':4,'cash_over_min':70}):
+   answer=debit_cash_fee_answer(question)
+   self.assertIn('50 000 ₽',answer);self.assertIn('70 ₽',answer);self.assertIn('4%',answer)
  def test_human_request_does_not_claim_connection(self):
   actual=RAGPrototype(client=Fake(error=True)).ask('Позови сотрудника')['answer']
   self.assertIn('не могу подключить',actual);self.assertNotIn('Подключаю специалиста',actual)

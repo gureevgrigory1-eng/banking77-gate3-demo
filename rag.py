@@ -1,10 +1,13 @@
 """Lexical RAG with grounded GigaChat evidence selection; optional vector index."""
 import hashlib,json,re,time
+from decimal import Decimal,ROUND_HALF_UP
 from pathlib import Path
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from giga_client import GigaClient,GigaError
 ROOT=Path(__file__).resolve().parent
+CATALOG=json.loads((ROOT/'product_catalog.json').read_text())
+DEBIT_CASH=CATALOG['products']['debit']
 NOTE='Информация относится к продуктам Демо-банка. Операции со счетами в этом чате недоступны.'
 ALIASES={'debit':['каждый день','дебетов','дебетовая','зарплатн'],'credit':['запас','кредитн','кредитка'],'junior':['старт','детск','ребен','ребён','школьн','подрост'],'savings':['копилк','накопительн'],'deposit':['горизонт','вклад','депозит'],'loan':['план','кредит налич','потребительск']}
 RISK=re.compile(r'мошенн|украл|украден|потерял.{0,25}карт|потеряна.{0,15}карт|потерял.{0,15}телефон|не\s+(?:узнаю|совершал|делал|проводил|подтверждал|покупал)|незнаком.{0,20}(?:плат|спис|перев)|неизвестн.{0,20}(?:плат|спис|перев)|без моего|подозрительн.{0,20}(?:спис|перев|операц)|(?:сообщил|передал|назвал|отправил).{0,30}(?:код|парол|cvv|пин)|(?:списали|сняли).{0,25}(?:дважды|два раза)|(?:переведи|отправь|перечисли)\s+(?:мне\s+)?(?:деньги|\d)|(?:оформи|выдай)\s+(?:мне\s+)?кредит|(?:заблокируй|разблокируй).{0,20}карт|(?:закрой|открой).{0,20}(?:сч[её]т|вклад)|stolen|fraud|unrecognised|unauthorized',re.I)
@@ -79,23 +82,25 @@ def debit_cash_fee_answer(query):
  operation=re.search(r'(?:снять|сниму|снимаю|снимать|сняти[ея]|обналичить|обналичу)\s*(?:ещ[её]\s+)?'+MONEY.pattern,query,re.I)
  amount=rubles(operation.group(0)) if operation else None
  if amount is None:return None
+ limit=int(DEBIT_CASH['cash_free_month']);pct=DEBIT_CASH['cash_over_pct'];minimum=int(DEBIT_CASH['cash_over_min'])
  prior=None
  if re.search(r'ещ[её]\s+не\s+снимал|ничего\s+не\s+снимал|пока\s+не\s+снимал|снял[аи]?\s+0\s*(?:₽|руб)',query,re.I):prior=0
  else:
   used=re.search(r'(?:уже\s+)?(?:снял[аи]?|снимал[аи]?|снято|обналичил[аи]?|израсходовал[аи]?|использовал[аи]?)\s*.{0,55}?'+MONEY.pattern,query,re.I)
   if used:prior=rubles(used.group(0))
-  elif re.search(r'(?:уже\s+)?(?:израсходовал|использовал).{0,55}(?:весь|полностью|месячн).{0,30}(?:лимит|бесплатн)',query,re.I):prior=100000
+  elif re.search(r'(?:уже\s+)?(?:израсходовал|использовал).{0,55}(?:весь|полностью|месячн).{0,30}(?:лимит|бесплатн)',query,re.I):prior=limit
  if prior is None:
-  return ('В банкоматах Демо-банка первые 100 000 ₽ снятия за календарный месяц бесплатны; '
-          'с превышения — 2%, минимум 90 ₽ за снятие. Для точного расчёта этой операции '
+  return (f'В банкоматах Демо-банка первые {ruble_text(limit)} ₽ снятия за календарный месяц бесплатны; '
+          f'с превышения — {pct}%, минимум {ruble_text(minimum)} ₽ за снятие. Для точного расчёта этой операции '
           'уточните, сколько уже снято в текущем месяце.')
- excess=max(0,prior+amount-100000)-max(0,prior-100000)
- fee_kopeks=max(9000,excess*2) if excess else 0
- if fee_kopeks==0:return f'При уже снятых {ruble_text(prior)} ₽ и новом снятии {ruble_text(amount)} ₽ в банкомате Демо-банка комиссия составит 0 ₽: месячный бесплатный предел 100 000 ₽ не превышен.'
+ excess=max(0,prior+amount-limit)-max(0,prior-limit)
+ percent_kopeks=int((Decimal(excess)*Decimal(str(pct))).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
+ fee_kopeks=max(minimum*100,percent_kopeks) if excess else 0
+ if fee_kopeks==0:return f'При уже снятых {ruble_text(prior)} ₽ и новом снятии {ruble_text(amount)} ₽ в банкомате Демо-банка комиссия составит 0 ₽: месячный бесплатный предел {ruble_text(limit)} ₽ не превышен.'
  fee=ruble_text(fee_kopeks//100)+(f',{fee_kopeks%100:02d}' if fee_kopeks%100 else '')
  return (f'При уже снятых {ruble_text(prior)} ₽ и новом снятии {ruble_text(amount)} ₽ в банкомате Демо-банка '
-         f'сумма превышения бесплатного месячного предела — {ruble_text(excess)} ₽. '
-         f'Комиссия за эту операцию — {fee} ₽: 2% с превышения, минимум 90 ₽ за снятие.')
+         f'сумма превышения бесплатного месячного предела {ruble_text(limit)} ₽ — {ruble_text(excess)} ₽. '
+         f'Комиссия за эту операцию — {fee} ₽: {pct}% с превышения, минимум {ruble_text(minimum)} ₽ за снятие.')
 
 def asks_credit_transfer_interest(query):
  return bool(re.search(r'\bзапас\b',query,re.I) and re.search(r'перевод|перевест|перевед|перечисл',query,re.I) and re.search(r'без процент|льгот|процент',query,re.I))
@@ -284,7 +289,12 @@ class RAGPrototype:
   elif debit_cash_fee_answer(query):
    out=self.result(debit_cash_fee_answer(query),sources=[self.retriever.by_id['D04']],reason='Расчёт комиссии по подтверждённым условиям.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04']}
   elif asks_cash_over_free_limit(query):
-   out=self.result('По карте «Каждый день» в банкоматах Демо-банка можно снять до 100 000 ₽ за календарный месяц без комиссии. С суммы сверх этого предела комиссия 2%, минимум 90 ₽ за снятие. У карты «Запас» такого бесплатного предела нет: снятие стоит 3% суммы плюс 300 ₽, а проценты начисляются со дня операции.',sources=[self.retriever.by_id['D04'],self.retriever.by_id['C04']],reason='Условия снятия наличных по двум картам.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04','C04']}
+   debit=CATALOG['products']['debit'];credit=CATALOG['products']['credit']
+   answer=(f'По карте «Каждый день» в банкоматах Демо-банка можно снять до {ruble_text(debit["cash_free_month"])} ₽ за календарный месяц без комиссии. '
+           f'С суммы сверх этого предела комиссия {debit["cash_over_pct"]}%, минимум {ruble_text(debit["cash_over_min"])} ₽ за снятие. '
+           f'У карты «Запас» такого бесплатного предела нет: снятие стоит {credit["cash_fee_pct"]}% суммы плюс {ruble_text(credit["cash_fee_fixed"])} ₽, '
+           f'а проценты {credit["rate_pct"]}% годовых начисляются со дня операции.')
+   out=self.result(answer,sources=[self.retriever.by_id['D04'],self.retriever.by_id['C04']],reason='Условия снятия наличных по двум картам.',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['D04','C04']}
   elif asks_credit_transfer_interest(query):
    out=self.result('Нет, на переводы с кредитной карты «Запас» льготный период не распространяется: проценты 29% годовых начисляются со дня операции. Комиссия за такой перевод в базе не указана; проверьте её в приложении.',sources=[self.retriever.by_id['C04']],reason='Условия перевода с кредитной карты «Запас».',route='answer'); retrieval={'mode':'policy_rule','retrieved_ids':['C04']}
   elif unsupported_scope(query):

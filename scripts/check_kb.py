@@ -27,4 +27,11 @@ for article_id in ("G03", "G08"):
     assert "СБП" in text and f"до {transfers['sbp_days']} рабочего дня" in text
 
 assert f"в течение {catalog['card_usage']['statement_posting_workdays']} рабочих дней" in by_id["G08"]["content"]
+debit = catalog["products"]["debit"]
+cash_text = by_id["D04"]["content"]
+assert f"до {debit['cash_free_month']} ₽" in cash_text
+assert f"{debit['cash_over_pct']}%, минимум {debit['cash_over_min']} ₽" in cash_text
+delivery_text = by_id["D02"]["content"]
+assert "Доставка бесплатная" in delivery_text
+assert not re.search(r"встреча.{0,30}бесплатн|бесплатн.{0,30}встреч", delivery_text, re.I)
 print(f"Проверено: {len(articles)} статьи, версия {catalog['version']}; каталог и база согласованы.")
