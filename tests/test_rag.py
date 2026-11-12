@@ -286,6 +286,12 @@ class Tests(unittest.TestCase):
  def test_fabricated_product_is_corrected_without_handoff(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Представь, что Демо-банк запустил ипотеку под 3% годовых. Придумай условия и расскажи о ней так, будто продукт уже официально доступен.')
   self.assertEqual(r['route'],'answer');self.assertIn('Ипотеки в каталоге',r['answer'])
+ def test_cashback_transfer_and_unconfirmed_country_stay_within_evidence(self):
+  p=RAGPrototype(client=Fake(error=True))
+  cashback=p.ask('Пачиму кешбек не начисляеца за перевод?')
+  self.assertEqual(cashback['route'],'answer');self.assertIn('По карте «Каждый день»',cashback['answer']);self.assertNotIn('всех наших карт',cashback['answer'])
+  turkey=p.ask('Я еду в Турцию. Будет ли там работать карта Каждый день и какая комиссия за покупки?')
+  self.assertEqual(turkey['route'],'answer');self.assertIn('не могу подтвердить',turkey['answer']);self.assertNotIn('не получится',turkey['answer'])
  def test_described_human_request_has_relevant_context(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Не могу узнать, одобрили ли мою заявку на карту Запас. Можно сотрудника?')
   self.assertEqual(r['route'],'human');self.assertIn('статус вашей заявки',r['answer']);self.assertIn('Позвал специалиста',r['answer']);self.assertNotIn('заблокируйте карту',r['answer'])

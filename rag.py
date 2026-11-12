@@ -102,6 +102,16 @@ def card_service_answer(query):
   if name in query.lower():return f'Обслуживание карты «{CATALOG["products"][product]["name"].removeprefix("Карта ")}» — {CATALOG["products"][product]["service_month"]} ₽ в месяц.',source
  return None
 
+def cashback_transfer_answer(query):
+ if re.search(r'к[еэ]шб[еэ]к',query,re.I) and re.search(r'перевод',query,re.I):
+  return 'По карте «Каждый день» кэшбэк 1% начисляется за обычные покупки. За переводы кэшбэк не начисляется. Условия кэшбэка других карт здесь не подтверждены.'
+ return None
+
+def unconfirmed_travel_answer(query):
+ if 'каждый день' in query.lower() and re.search(r'турц|за границ|за рубеж',query,re.I) and re.search(r'работ|оплат|покуп|комисс',query,re.I):
+  return 'В подтверждённых условиях карты «Каждый день» указаны оплата в России и Великобритании. Работа карты для указанного направления и комиссия за покупки там не описаны; я не могу подтвердить ни возможность оплаты, ни её отсутствие. Проверьте условия перед поездкой в приложении или поддержке.'
+ return None
+
 def asks_balance_location(query):
  return bool(re.search(r'где|как',query,re.I) and re.search(r'посмотр|увид|узна',query,re.I) and re.search(r'баланс|остат',query,re.I) and re.search(r'карт|сч[её]т',query,re.I))
 
@@ -356,6 +366,8 @@ class RAGPrototype:
   eligibility=eligibility_question(query)
   savings_income=savings_income_answer(query)
   card_service=card_service_answer(query)
+  cashback_transfer=cashback_transfer_answer(query)
+  travel_answer=unconfirmed_travel_answer(query)
   if GREETING.fullmatch(query):
    out=self.result('Здравствуйте! Помогу разобраться с картами, сбережениями, кредитом и переводами Демо-банка. О чём хотите узнать?',reason='Приветствие.',route='answer'); retrieval={'mode':'greeting_rule','retrieved_ids':[]}
   elif kind:
@@ -375,6 +387,10 @@ class RAGPrototype:
    ids=['S01','S03'];out=self.result(savings_income,sources=[self.retriever.by_id[i] for i in ids],reason='Ориентировочный доход рассчитан по подтверждённой ставке.',route='answer');retrieval={'mode':'savings_calculation_rule','retrieved_ids':ids}
   elif card_service:
    answer,source_id=card_service;out=self.result(answer,sources=[self.retriever.by_id[source_id]],reason='Стоимость обслуживания взята из условий карты.',route='answer');retrieval={'mode':'service_fee_rule','retrieved_ids':[source_id]}
+  elif cashback_transfer:
+   out=self.result(cashback_transfer,sources=[self.retriever.by_id['D04']],reason='Переводы исключены из кэшбэка карты «Каждый день».',route='answer');retrieval={'mode':'cashback_rule','retrieved_ids':['D04']}
+  elif travel_answer:
+   out=self.result(travel_answer,sources=[self.retriever.by_id['D01']],reason='Условия работы карты в указанной стране не подтверждены.',route='answer');retrieval={'mode':'travel_rule','retrieved_ids':['D01']}
   elif asks_balance_location(query):
    out=self.result('Баланс виден на экране нужной карты или счёта в приложении. В этом чате я не вижу ваш остаток.',sources=[self.retriever.by_id['G04']],reason='Порядок просмотра баланса описан в базе знаний.',route='answer');retrieval={'mode':'balance_location_rule','retrieved_ids':['G04']}
   elif asks_fabricated_terms(query):
