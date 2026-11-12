@@ -1,6 +1,6 @@
 import json,time,unittest
 from unittest.mock import patch
-from rag import RAGPrototype,Retriever,normalize_history,ROOT,DEBIT_CASH,debit_cash_fee_answer
+from rag import RAGPrototype,Retriever,normalize_history,ROOT,DEBIT_CASH,debit_cash_fee_answer,meeting_cost_answer
 from giga_client import GigaError
 class Fake:
  available=True;provider='GigaChat';model='fake';embedding_model='Embeddings'
@@ -81,7 +81,7 @@ class Tests(unittest.TestCase):
  def test_article_boundaries_and_material_application_terms(self):
   cases=[
    ('Что такое карта Каждый день?','D01','Для граждан РФ старше 18 лет.',('от 18 лет',),('старше 18 лет',)),
-   ('Как оформить дебетовую карту Каждый день?','D02','Встреча бесплатная.',('Доставка бесплатная','паспортом РФ'),('Встреча бесплатная',)),
+   ('Как оформить дебетовую карту Каждый день?','D02','Встреча бесплатная.',('Доставка бесплатная','паспорт РФ'),('Встреча бесплатная',)),
    ('Как оформить карту ребёнку?','J02','Паспорт ребёнка нужен, если ему исполнилось 14 лет.',('с дебетовой картой','если ребёнок уже получил паспорт'),('исполнилось 14',)),
    ('Как открыть вклад Горизонт?','V02','Откройте вклад в приложении.',('гражданам РФ','идентификации по паспорту РФ'),()),
   ]
@@ -114,15 +114,44 @@ class Tests(unittest.TestCase):
  def test_meeting_price_is_not_inferred_from_delivery(self):
   p=RAGPrototype(client=Fake(error=True))
   for question in ('Встреча с представителем при выдаче «Каждый день» бесплатная?','Сколько стоит встреча с представителем для «Каждый день»?','При оформлении «Каждый день» встреча с представителем стоит ноль рублей?'):
-   r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'D02');self.assertIn('стоимость самой встречи',r['answer']);self.assertNotIn('встреча бесплатная',r['answer'].lower())
+   r=p.ask(question);self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'D02');self.assertIn('стоимость самой встречи',r['answer'].lower());self.assertNotIn('встреча бесплатная',r['answer'].lower())
  def test_cash_fee_uses_catalog_parameters(self):
   question='В этом месяце уже снял 49 000 ₽ с «Каждый день». Хочу снять 2 000 ₽ в вашем банкомате: какая комиссия?'
   with patch.dict(DEBIT_CASH,{'cash_free_month':50000,'cash_over_pct':4,'cash_over_min':70}):
    answer=debit_cash_fee_answer(question)
    self.assertIn('50 000 ₽',answer);self.assertIn('70 ₽',answer);self.assertIn('4%',answer)
  def test_human_request_does_not_claim_connection(self):
-  actual=RAGPrototype(client=Fake(error=True)).ask('Позови сотрудника')['answer']
-  self.assertIn('не могу подключить',actual);self.assertNotIn('Подключаю специалиста',actual)
+  p=RAGPrototype(client=Fake(error=True))
+  for query in ('Позови сотрудника','Соедините с живым специалистом по моей карте','Хочу поговорить с оператором'):
+   with self.subTest(query=query):
+    result=p.ask(query)
+    self.assertEqual(result['retrieval']['mode'],'support_rule')
+    self.assertEqual(result['handoff_status'],'simulated')
+    self.assertIn('сотрудник здесь не подключ',result['answer'])
+    self.assertNotIn('fallback_code',result)
+ def test_credit_cash_grace_survives_model_failure(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for query in ('После снятия наличных с «Запаса» остаются 55 дней без процентов?','По кредитке Запас снятие в банкомате входит в льготный период?'):
+   result=p.ask(query)
+   self.assertEqual(result['retrieval']['mode'],'policy_rule')
+   self.assertEqual(result['sources'][0]['id'],'C04')
+   self.assertIn('не распространяется',result['answer'])
+   self.assertIn('29%',result['answer'])
+ def test_meeting_price_uses_only_explicit_source_statement(self):
+  source={'content':'Доставка бесплатная. Встреча с представителем стоит 150 ₽.'}
+  self.assertEqual(meeting_cost_answer(source),'Встреча с представителем стоит 150 ₽.')
+  source['content']='Доставка бесплатная. Выберите встречу с представителем.'
+  self.assertIn('не указана',meeting_cost_answer(source))
+ def test_fallbacks_explain_distinct_causes(self):
+  p=RAGPrototype(client=Fake({'route':'personal','answer':'Ваш перевод дошёл.','source_ids':[],'choices':[]}))
+  personal=p.ask('Каков статус моей заявки на кредит?')['answer']
+  self.assertIn('не вижу вашу',personal)
+  p=RAGPrototype(client=Fake({'route':'unavailable','answer':'Комиссия 0 ₽.','source_ids':[],'choices':[]}))
+  unavailable=p.ask('Какая комиссия за неизвестную услугу?')['answer']
+  self.assertIn('нет',unavailable)
+  self.assertNotIn('0 ₽',unavailable)
+  failure=RAGPrototype(client=Fake(error=True)).ask('Расскажите про карту Запас')['answer']
+  self.assertIn('Временный сбой',failure)
  def test_currency_deposit_is_answered_from_catalog(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Есть ли у вас валютный вклад в долларах?')
   self.assertEqual(r['route'],'answer');self.assertEqual({a['id'] for a in r['sources']},{'G01','V01'});self.assertIn('не представлены',r['answer'])
@@ -201,6 +230,28 @@ class Tests(unittest.TestCase):
   with patch('giga_client.time.sleep') as pause:
    self.assertEqual(client.post('chat/completions',{},time.monotonic()+5),{'ok':True})
    pause.assert_called_once()
+  self.assertEqual(len(calls),2)
+ def test_transient_network_error_is_retried_once(self):
+  from giga_client import GigaClient
+  client=GigaClient();client.token=lambda deadline:'token';calls=[]
+  def request_once_failed(*args):
+   calls.append(args)
+   if len(calls)==1:raise GigaError('network_or_format')
+   return {'ok':True}
+  client._request=request_once_failed
+  with patch('giga_client.time.sleep'):
+   self.assertEqual(client.post('chat/completions',{},time.monotonic()+5),{'ok':True})
+  self.assertEqual(len(calls),2)
+ def test_invalid_model_response_is_retried_once(self):
+  from giga_client import GigaClient
+  client=GigaClient();calls=[]
+  def post(*args):
+   calls.append(args)
+   content='not JSON' if len(calls)==1 else json.dumps({'route':'answer','answer':'Подтверждено','source_ids':['G01'],'choices':[]})
+   return {'choices':[{'message':{'content':content}}]}
+  client.post=post
+  result,_=client.generate('Какие продукты?',[],[{'id':'G01','title':'Продукты','content':'Подтверждено'}],time.monotonic()+5)
+  self.assertEqual(result['answer'],'Подтверждено')
   self.assertEqual(len(calls),2)
  def test_http_contract(self):
   from app import app,requests_by_client

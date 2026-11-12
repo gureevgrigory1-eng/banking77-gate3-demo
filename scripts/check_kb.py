@@ -33,5 +33,27 @@ assert f"до {debit['cash_free_month']} ₽" in cash_text
 assert f"{debit['cash_over_pct']}%, минимум {debit['cash_over_min']} ₽" in cash_text
 delivery_text = by_id["D02"]["content"]
 assert "Доставка бесплатная" in delivery_text
+assert f"от {debit['age']} лет" in delivery_text
+assert f"{debit['delivery_min_days']}–{debit['delivery_max_days']} рабочих дней" in delivery_text
 assert not re.search(r"встреча.{0,30}бесплатн|бесплатн.{0,30}встреч", delivery_text, re.I)
+junior = catalog["products"]["junior"]
+junior_text = by_id["J02"]["content"]
+assert f"{junior['age']}–{junior['age_max']} лет" in junior_text
+assert f"{junior['delivery_min_days']}–{junior['delivery_max_days']} рабочих дней" in junior_text
+for article_id, product in (("C02", "credit"), ("L02", "loan")):
+    policy = catalog["products"][product]
+    assert f"от {policy['age']} до {policy['age_max']} лет" in by_id[article_id]["content"]
+for article_id, product in (("S02", "savings"), ("V02", "deposit")):
+    assert f"от {catalog['products'][product]['age']} лет" in by_id[article_id]["content"]
+deposit = catalog["products"]["deposit"]
+deposit_text = by_id["V02"]["content"]
+assert f"от {deposit['min_amount']} ₽" in deposit_text
+assert f"{deposit['term_months']} месяцев" in deposit_text
+assert f"{deposit['rate_pct']}% годовых" in deposit_text
+credit = catalog["products"]["credit"]
+credit_text = by_id["C04"]["content"]
+assert f"{credit['cash_fee_pct']}% от суммы плюс {credit['cash_fee_fixed']} ₽" in credit_text
+assert f"{credit['rate_pct']}% годовых" in credit_text
+assert "На наличные и переводы льготный период не распространяется" in credit_text
+assert f"до {credit['grace_days']} дней" in by_id["C03"]["content"]
 print(f"Проверено: {len(articles)} статьи, версия {catalog['version']}; каталог и база согласованы.")
