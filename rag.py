@@ -26,6 +26,9 @@ def risk_kind(query):
 def asks_human_support(query):
  return bool(HUMAN_REQUEST.search(query) or re.fullmatch(r'\s*(?:оператор|специалист|живой\s+человек)[\s?!.]*',query,re.I))
 
+def human_request_needs_context(query):
+ return not bool(re.search(r'почему|кэшб[еэ]к|спис|потер|украд|заблок|отмен|ошиб|одобр|заявк|просроч|отсроч|денег нет|не могу|не приш|не получ|не работает|неизвестн|подозрительн|жалоб|возврат|перев[её]л не туда',query,re.I))
+
 def redact_summary(text):
  text=re.sub(r'\b(?:\d[ -]?){12,18}\d\b','[номер карты скрыт]',text)
  text=re.sub(r'\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b','[email скрыт]',text)
@@ -242,8 +245,9 @@ class RAGPrototype:
   return dict(mode=mode,answer=answer,sources=sources or [],note=NOTE,**extra)
  def specialist(self,query,history,answer,reason,sources=None,draft='Проверить запрос клиента и помочь через защищённый канал.'):
   summary=redact_summary('\n'.join([x['text'] for x in history if x['role']=='user'][-2:]+[query]))
-  if not re.search(r'сотрудник здесь не подключ',answer,re.I):
-   answer=answer.rstrip()+' Передача специалисту показана только в демо-режиме; сотрудник здесь не подключён.'
+  handoff='Позвал специалиста, он подключится в ближайшее время'
+  if handoff not in answer:
+   answer=(answer.rstrip()+' '+handoff+'.').strip()
   return self.result(answer,mode='copilot',sources=sources or [self.retriever.by_id['G06']],operator_summary=summary,draft=draft,reason=reason,route='human',handoff_status='simulated')
  def handoff(self,query,history,kind='other'):
   source=self.retriever.by_id['G05']; support=self.retriever.by_id['G06']
@@ -263,10 +267,10 @@ class RAGPrototype:
   return self.specialist(query,history,'Временный сбой: сейчас не могу проверить ответ. Попробуйте ещё раз. Если вопрос срочный или касается вашей операции, используйте поддержку в приложении вашего банка.',reason,[support],'Проверить вопрос по актуальным условиям и ответить клиенту.')
  def personal_fallback(self,query,history):
   support=self.retriever.by_id['G06']
-  return self.specialist(query,history,'Я не вижу вашу конкретную операцию, заявку или счёт в этом демо. Проверьте нужный статус в приложении; если он неясен, используйте официальный чат поддержки в нём. Этот демо-чат не является чатом поддержки.','Для ответа нужны личные сведения, недоступные демо.',[support])
+  return self.specialist(query,history,'Я не вижу вашу конкретную операцию, заявку или счёт. Проверьте нужный статус в приложении.','Для ответа нужны личные сведения, недоступные помощнику.',[support])
  def unavailable_fallback(self,query,history):
   support=self.retriever.by_id['G06']
-  return self.specialist(query,history,'Точного условия по этому вопросу в подтверждённых материалах нет. Не буду придумывать комиссию или тариф. Проверьте условия операции до её подтверждения; этот демо-чат не может уточнить их у сотрудника.','Нужного условия нет в подтверждённых материалах.',[support])
+  return self.specialist(query,history,'Точного условия по этому вопросу в подтверждённых материалах нет. Не буду придумывать комиссию или тариф. Проверьте условия операции до её подтверждения.','Нужного условия нет в подтверждённых материалах.',[support])
  def clarification_handoff(self,query,history):
   return self.specialist(query,history,'Вопрос остаётся неясным после нескольких уточнений. Обратитесь в поддержку через «Помощь» → «Чат» в приложении.','После трёх уточнений вопрос остался неоднозначным.',[self.retriever.by_id['G06']],'Пожалуйста, уточните запрос клиента и помогите с решением.')
  def ask(self,query,history=None):
@@ -279,7 +283,10 @@ class RAGPrototype:
   elif kind:
    out=self.handoff(query,history,kind); retrieval={'mode':'safety_rule','retrieved_ids':[]}
   elif asks_human_support(query):
-   out=self.specialist(query,history,'Это демонстрационный чат: сотрудник здесь не подключается. Для помощи по реальной карте или счёту откройте чат поддержки в приложении вашего банка.','Клиент явно попросил человека.',[self.retriever.by_id['G06']]); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+   if human_request_needs_context(query):
+    out=self.result('Расскажите, пожалуйста, с каким вопросом нужна помощь специалиста?',mode='clarify',clarifying_choices=['Вопрос по карте','Вопрос по переводу','Вопрос по кредиту'],reason='Клиент попросил специалиста без описания вопроса.',route='clarify'); retrieval={'mode':'support_context_rule','retrieved_ids':[]}
+   else:
+    out=self.specialist(query,history,'','Клиент описал вопрос и попросил человека.',[self.retriever.by_id['G06']]); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
   elif needs_context(query,history):
    answer='Уточните, пожалуйста, что именно должно быть готово: карта, заявка или перевод?' if re.search(r'готов',query,re.I) else 'Уточните, пожалуйста, о каком продукте или действии вы хотите узнать подробнее?'
    out=self.result(answer,mode='clarify',clarifying_choices=['Карта','Заявка','Перевод'] if re.search(r'готов',query,re.I) else ['Карта','Счёт или вклад','Кредит'],reason='В вопросе нет названия предмета; нужен контекст.',route='clarify'); retrieval={'mode':'context_rule','retrieved_ids':[]}
