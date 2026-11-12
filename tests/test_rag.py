@@ -16,7 +16,7 @@ class Tests(unittest.TestCase):
  def test_missing_source_rejected(self):
   r=RAGPrototype(client=Fake({'route':'answer','answer':'99%','source_ids':[],'choices':[]})).ask('Как оформить карту?');self.assertNotEqual(r['mode'],'autopilot')
  def test_api_failure_does_not_return_unverified_article(self):
-  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'simulated');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('демо-режиме',r['answer']);self.assertEqual(r['fallback_code'],'http_429')
+  r=RAGPrototype(client=Fake(error=True)).ask('Как оформить дебетовую карту?');self.assertEqual(r['mode'],'copilot');self.assertEqual(r['handoff_status'],'simulated');self.assertEqual(r['sources'][0]['id'],'G06');self.assertNotIn('Чтобы оформить',r['answer']);self.assertIn('Позвал специалиста, он подключится в ближайшее время',r['answer']);self.assertEqual(r['fallback_code'],'http_429')
  def test_greeting_needs_no_bank_source_or_model(self):
   p=RAGPrototype(client=Fake(error=True))
   for query in ('Привет!','Здравствуйте','Добрый день'):
@@ -120,15 +120,20 @@ class Tests(unittest.TestCase):
   with patch.dict(DEBIT_CASH,{'cash_free_month':50000,'cash_over_pct':4,'cash_over_min':70}):
    answer=debit_cash_fee_answer(question)
    self.assertIn('50 000 ₽',answer);self.assertIn('70 ₽',answer);self.assertIn('4%',answer)
- def test_human_request_does_not_claim_connection(self):
+ def test_bare_human_request_collects_context(self):
   p=RAGPrototype(client=Fake(error=True))
   for query in ('Позови сотрудника','Соедините с живым специалистом по моей карте','Хочу поговорить с оператором'):
    with self.subTest(query=query):
     result=p.ask(query)
-    self.assertEqual(result['retrieval']['mode'],'support_rule')
-    self.assertEqual(result['handoff_status'],'simulated')
-    self.assertIn('сотрудник здесь не подключ',result['answer'])
+    self.assertEqual(result['retrieval']['mode'],'support_context_rule')
+    self.assertEqual(result['route'],'clarify')
+    self.assertIn('с каким вопросом',result['answer'])
     self.assertNotIn('fallback_code',result)
+ def test_human_request_with_issue_uses_simulated_connection_message(self):
+  result=RAGPrototype(client=Fake(error=True)).ask('Не пришёл кэшбэк за прошлый месяц. Позови оператора.')
+  self.assertEqual(result['retrieval']['mode'],'support_rule')
+  self.assertEqual(result['handoff_status'],'simulated')
+  self.assertEqual(result['answer'],'Позвал специалиста, он подключится в ближайшее время.')
  def test_credit_cash_grace_survives_model_failure(self):
   p=RAGPrototype(client=Fake(error=True))
   for query in ('После снятия наличных с «Запаса» остаются 55 дней без процентов?','По кредитке Запас снятие в банкомате входит в льготный период?'):
