@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Ассистент поддержки Демо-банка — Gate 1–6</title>
+  <style>
+    :root {
+      --ink: #171717;
+      --text: #263140;
+      --muted: #596474;
+      --paper: #f4f4f5;
+      --panel: #ffffff;
+      --line: #dcdee3;
+      --violet: #8e73f8;
+      --violet-soft: #ece7ff;
+      --blue-soft: #dbe9ed;
+      --rose-soft: #f6d8da;
+      --green-soft: #e7f4eb;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; }
+    body {
+      background: #202124;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    button { font: inherit; }
+    .deck {
+      position: relative;
+      width: min(100vw, 177.7778vh);
+      aspect-ratio: 16 / 9;
+      max-width: 1920px;
+      background: var(--paper);
+      box-shadow: 0 0 44px rgba(0,0,0,.3);
+      container-type: inline-size;
+      overflow: hidden;
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 4.2cqw 5.2cqw 4.4cqw;
+      display: none;
+      flex-direction: column;
+      gap: 1.8cqw;
+      background: var(--paper);
+    }
+    .slide.active { display: flex; }
+    .slide.cover {
+      background: #151515;
+      color: #f8f8f8;
+      justify-content: space-between;
+      padding: 5cqw 5.2cqw 6cqw;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 1.3cqw;
+      font-size: 2.28cqw;
+      font-weight: 750;
+      line-height: .94;
+      letter-spacing: -.035em;
+      width: fit-content;
+    }
+    .cover h1 {
+      margin: 0;
+      max-width: 76cqw;
+      font-size: 5.2cqw;
+      line-height: 1.02;
+      letter-spacing: -.045em;
+      font-weight: 750;
+    }
+    .cover p {
+      margin: 1.45cqw 0 0;
+      color: #c9c9cb;
+      font-size: 1.7cqw;
+    }
+    .cover .corner {
+      position: absolute;
+      right: 5.2cqw;
+      top: 5.8cqw;
+      color: #a991ff;
+      font-size: 1.22cqw;
+      font-weight: 700;
+      letter-spacing: .16em;
+    }
+    h2 {
+      margin: 0;
+      font-size: 3.3cqw;
+      line-height: 1.06;
+      letter-spacing: -.035em;
+      font-weight: 750;
+    }
+    h3 {
+      margin: 0 0 .7cqw;
+      font-size: 1.75cqw;
+      line-height: 1.12;
+      font-weight: 740;
+    }
+    p, li { font-size: 1.52cqw; line-height: 1.25; }
+    p { margin: 0; }
+    strong { font-weight: 750; }
+    .lead { font-size: 1.8cqw; line-height: 1.24; color: var(--text); }
+    .small { font-size: 1.22cqw; line-height: 1.22; }
+    .subtle { color: var(--muted); }
+    .purple { color: #8064ef; }
+    .red { color: #bf332f; }
+    .blue { color: #17659d; }
+    .eyebrow { color: #8064ef; font-size: 1.25cqw; font-weight: 750; letter-spacing: .055em; text-transform: uppercase; }
+    .header { display: flex; justify-content: space-between; align-items: baseline; gap: 2cqw; }
+    .header .eyebrow { white-space: nowrap; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: .7cqw;
+      padding: 1.35cqw 1.6cqw;
+    }
+    .panel.soft { background: #f8f9fa; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.45cqw; }
+    .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25cqw; }
+    .gate-pill { display: inline-flex; align-items: center; gap: .7cqw; margin-bottom: 1.05cqw; color: #6951d3; font-weight: 740; font-size: 1.35cqw; }
+    .gate-pill b { display: inline-grid; place-items: center; background: var(--violet); color: white; width: 2.75cqw; height: 2.75cqw; border-radius: 50%; font-size: 1.35cqw; }
+    .stack { display: flex; flex-direction: column; gap: .75cqw; }
+    .bullet { display: flex; align-items: flex-start; gap: .66cqw; color: var(--text); font-size: 1.45cqw; line-height: 1.23; }
+    .bullet::before { content: "•"; font-weight: 800; flex: none; }
+    .metric-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1cqw; }
+    .metric { padding: 1.05cqw 1.2cqw; border-radius: .55cqw; min-height: 6.5cqw; }
+    .metric.blue-bg { background: var(--blue-soft); }
+    .metric.rose-bg { background: var(--rose-soft); }
+    .metric.violet-bg { background: var(--violet-soft); }
+    .metric strong { display: block; font-size: 2.6cqw; line-height: 1.05; }
+    .metric span { display: block; margin-top: .36cqw; font-size: 1.13cqw; line-height: 1.1; }
+    .fineprint { font-size: 1.03cqw; line-height: 1.2; color: #656b73; }
+    .footer { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2cqw; }
+    .footer .fineprint { max-width: 82%; }
+    .num { color: #8d8d92; font-size: 1.12cqw; }
+    .emphasis-strip { background: #e9e9eb; border-radius: .45cqw; padding: 1.05cqw 1.35cqw; font-size: 1.36cqw; line-height: 1.22; }
+    .flow { display: flex; align-items: stretch; gap: .55cqw; margin: .2cqw 0 .15cqw; }
+    .flow .step { flex: 1; background: white; border: 1px solid var(--line); border-radius: .55cqw; padding: 1.1cqw 1.2cqw; min-height: 8.3cqw; }
+    .flow .step b { display: block; color: var(--violet); font-size: 1.05cqw; margin-bottom: .55cqw; }
+    .flow .step strong { display: block; font-size: 1.4cqw; line-height: 1.12; }
+    .flow .step span { display: block; color: var(--muted); font-size: 1.16cqw; line-height: 1.15; margin-top: .42cqw; }
+    .flow .arrow { display: grid; place-items: center; color: #665c89; font-size: 2.3cqw; flex: none; }
+    .result-line { background: white; border-left: .42cqw solid var(--violet); padding: 1.05cqw 1.3cqw; border-radius: 0 .45cqw .45cqw 0; font-size: 1.42cqw; line-height: 1.22; }
+    .evidence-table { width: 100%; border-collapse: collapse; font-size: 1.24cqw; color: var(--text); }
+    .evidence-table th, .evidence-table td { padding: .59cqw .25cqw; text-align: left; border-bottom: 1px solid #dedfe4; }
+    .evidence-table th { color: #586171; font-weight: 650; }
+    .evidence-table td:last-child, .evidence-table th:last-child { text-align: right; font-weight: 740; }
+    .note-box { background: #eaf1fb; border-radius: .55cqw; padding: 1.05cqw 1.3cqw; }
+    .decision { display: grid; grid-template-columns: 1.05fr .95fr; gap: 1.4cqw; align-items: stretch; }
+    .decision .panel { padding: 1.5cqw 1.65cqw; }
+    .decision .go { background: var(--green-soft); border-color: #cee6d5; }
+    .decision .hold { background: #fff; }
+    .decision h3 { font-size: 2cqw; }
+    .decision .tag { font-size: 1.12cqw; font-weight: 750; letter-spacing: .07em; color: #0f713c; margin-bottom: .55cqw; }
+    .decision .hold .tag { color: #b33733; }
+    .version { margin-top: .85cqw; color: #626a72; font-size: 1.08cqw; }
+    .controls {
+      position: absolute;
+      z-index: 10;
+      bottom: .9cqw;
+      right: 5.25cqw;
+      display: flex;
+      gap: .35cqw;
+      opacity: .35;
+      transition: opacity .2s;
+    }
+    .deck:hover .controls, .controls:focus-within { opacity: 1; }
+    .controls button {
+      width: 2.35cqw;
+      height: 2.35cqw;
+      border: 0;
+      background: rgba(84,75,103,.13);
+      border-radius: 50%;
+      cursor: pointer;
+      color: #484050;
+      font-size: 1.25cqw;
+    }
+    .deck.is-cover .controls button { color: white; }
+    .notes {
+      position: absolute;
+      z-index: 20;
+      inset: auto 5.2cqw 3.7cqw 5.2cqw;
+      max-height: 35%;
+      overflow: auto;
+      display: none;
+      background: rgba(19,20,23,.94);
+      color: #fff;
+      border-radius: .7cqw;
+      padding: 1.25cqw 1.5cqw;
+      box-shadow: 0 .6cqw 2.5cqw rgba(0,0,0,.25);
+    }
+    .notes.open { display: block; }
+    .notes h4 { margin: 0 0 .55cqw; font-size: 1.2cqw; color: #b2a0ff; }
+    .notes p { font-size: 1.18cqw; line-height: 1.32; }
+    .help { position: absolute; z-index: 11; left: 5.2cqw; bottom: 1.1cqw; font-size: .95cqw; color: #9a9aa0; }
+    .cover .help { color: #8d8d92; }
+    @media (max-width: 720px) {
+      .deck { width: 100vw; }
+    }
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { width: 16in; height: auto; display: block; background: white; overflow: visible; }
+      .deck { width: 16in; max-width: none; aspect-ratio: auto; height: auto; overflow: visible; box-shadow: none; }
+      .slide, .slide.active { position: relative; display: flex; width: 16in; height: 9in; break-after: page; page-break-after: always; }
+      .controls, .notes, .help { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Презентация по Gate 1–6">
+    <section class="slide cover active" data-note="Я защищаю учебного ассистента поддержки для вымышленного Демо-банка. Покажу путь от выбора задачи до проверки качества и объясню, почему решение сегодня ограничено учебной демонстрацией. Время выступления — пять минут.">
+      <div class="brand"><span>ЦЕНТРАЛЬНЫЙ<br>УНИВЕРСИТЕТ</span></div>
+      <span class="corner">GATE 1–6 · 5 МИНУТ</span>
+      <div>
+        <h1>Ассистент поддержки<br>Демо-банка</h1>
+        <p>От идеи до проверки качества и решения о выпуске</p>
+      </div>
+      <span class="help">← → — слайды · N — заметки · P — печать</span>
+    </section>
+
+    <section class="slide" data-note="Gate 1: выбрал помощь клиентам банка с типовыми вопросами о продуктах. Пользователь получает быстрый ответ, банк потенциально снижает нагрузку на первую линию. В первой работе завысил масштаб в десять раз; правильное произведение 72 млн на 50 рублей — 3,6 млрд рублей условных затрат, а не экономии. Gate 2: провёл три клиентских и одно экспертное интервью, изучил альтернативы. Выяснилось, что сложный запрос нельзя задерживать ботом. Поэтому сузил первый этап до простых низкорисковых вопросов и задал пороги качества, риска, скорости и стоимости. Переход к автоматизации возможен после проверки в режиме помощи сотруднику.">
+      <div class="header"><h2>Gate 1–2 — задача и проверка концепции</h2><span class="eyebrow">Discovery</span></div>
+      <div class="two" style="flex:1">
+        <div class="panel">
+          <div class="gate-pill"><b>01</b> Ideation</div>
+          <h3>Типовой вопрос должен решаться в чате</h3>
+          <div class="stack">
+            <div class="bullet">Клиенту нужен быстрый ответ; банку — меньше ручной работы на первой линии.</div>
+            <div class="bullet">ML помогает понять свободную формулировку и собрать ответ из нескольких статей. Точные тарифы и риск остаются под правилами.</div>
+          </div>
+          <div class="emphasis-strip" style="margin-top:1.3cqw"><strong>72 млн × 50 ₽ = 3,6 млрд ₽</strong><br><span class="small subtle">Условные годовые затраты, не обещанная экономия.</span></div>
+        </div>
+        <div class="panel">
+          <div class="gate-pill"><b>02</b> Concept Validation</div>
+          <h3>Сузили первый сценарий после исследований</h3>
+          <div class="stack">
+            <div class="bullet"><strong>3 интервью клиентов + 1 экспертное:</strong> в сложном случае человеку важен быстрый выход на специалиста.</div>
+            <div class="bullet">Первый контур — вопросы об условиях шести вымышленных продуктов; личные и опасные обращения передаются человеку.</div>
+            <div class="bullet">Путь развития: помощь сотруднику → проверка качества → автоматический ответ.</div>
+          </div>
+        </div>
+      </div>
+      <div class="metric-bar">
+        <div class="metric blue-bg"><strong>≥95%</strong><span>верных простых ответов и Recall@5 — цели</span></div>
+        <div class="metric rose-bg"><strong>0</strong><span>критических ошибок — обязательная цель</span></div>
+        <div class="metric violet-bg"><strong>≤35 ₽</strong><span>целевая стоимость решённого обращения при 50 ₽ вручную</span></div>
+      </div>
+      <div class="footer"><span class="fineprint">Пороги сформулированы как условия продолжения, а не как уже достигнутые показатели.</span><span class="num">2 / 5</span></div>
+    </section>
+
+    <section class="slide" data-note="Gate 3: собрал публичный учебный чат. Вопрос и короткая история поступают в сервис. TF-IDF выбирает пять релевантных статей из базы вымышленного банка; GigaChat-2-Max выбирает маршрут и формулирует ответ, сервер проверяет источники и безопасные исключения. Начали с 30 статей по шести продуктам, позже база выросла до 32. На 80 авторских синтетических сценариях нужная статья попадала в топ-5 во всех 50 справочных вопросах; все 20 опасных тестов ушли с автоматического маршрута. Но автоматическая проверка полноты фактов дала 40/50 у RAG против 44/50 у показа первой статьи. Это не человеческая оценка, и именно она показала необходимость отдельного eval ответа. p95 на этих 80 запросах был 3,41 секунды.">
+      <div class="header"><h2>Gate 3 — работающий прототип</h2><span class="eyebrow">Prototype</span></div>
+      <div class="flow" aria-label="Схема работы помощника">
+        <div class="step"><b>01</b><strong>Вопрос клиента</strong><span>Текст и короткий контекст диалога</span></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>02</b><strong>Поиск TF-IDF</strong><span>Пять статей из базы вымышленного банка</span></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>03</b><strong>GigaChat-2-Max</strong><span>Маршрут и ответ по найденным фактам</span></div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>04</b><strong>Проверка сервера</strong><span>Источники, правила безопасности и запасной путь</span></div>
+      </div>
+      <div class="two" style="flex:1">
+        <div class="panel">
+          <h3>Что построили</h3>
+          <div class="stack">
+            <div class="bullet">Публичный чат по шести вымышленным продуктам.</div>
+            <div class="bullet">База знаний: сначала 30, затем 32 статьи с версиями и источниками.</div>
+            <div class="bullet">Без доступа к счетам, заявкам и операциям клиента.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Что показали 80 синтетических тестов</h3>
+          <table class="evidence-table">
+            <tr><th>Поиск нужной статьи в топ-5</th><td>50 / 50</td></tr>
+            <tr><th>Опасные запросы не отвечены автоматически</th><td>20 / 20</td></tr>
+            <tr><th>Прокси полноты фактов: RAG / статья</th><td>40 / 50 · 44 / 50</td></tr>
+            <tr><th>Время ответа p95</th><td>3,41 с</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="result-line"><strong>Вывод:</strong> поиск и скорость работали, но содержание ответа требовало ручной проверки и исправления запасного режима.</div>
+      <div class="footer"><span class="fineprint">Прокси полноты фактов — автоматическая проверка, не оценка качества ответа человеком.</span><span class="num">3 / 5</span></div>
+    </section>
+
+    <section class="slide" data-note="Gate 4: собрал 200 русскоязычных пар вопрос — фактический ответ бота и разметил маршрут/категорию и качество. Второй человек независимо разметил 40 пар. Совпадение категории было 38/40, качества — лишь 29/40; 13 расхождений разобрали. Простые словарные правила на исходной шестиклассной задаче дали 31/40, а вероятностный классификатор 23/40 — модель не выиграла у правил. Gate 5: после комментариев преподавателя отдельно сравнили маршрутизацию и качество ответа, уточнили рубрику, проверили TF-IDF с логистической регрессией и RAG на тех же 40, сделали baseline текста. На одинаковых 24 вопросах у facts-5 было 16 хороших ответов против 2 у простого показа первой статьи. При этом 16/24 — ниже порога для клиентского пилота. Запасной режим, который раньше выдавал случайную статью в 9 из 12 случаев, заменили безопасным обращением к специалисту. Результаты разных задач и версий нельзя напрямую складывать.">
+      <div class="header"><h2>Gate 4–5 — данные, eval и доработка</h2><span class="eyebrow">Beta / MLP</span></div>
+      <div class="two" style="flex:1">
+        <div class="panel">
+          <div class="gate-pill"><b>04</b> Разметка и baseline</div>
+          <div class="metric-bar" style="grid-template-columns:1fr 1fr; margin-bottom:1.1cqw">
+            <div class="metric violet-bg"><strong>200</strong><span>пар «вопрос — ответ» размечено автором</span></div>
+            <div class="metric blue-bg"><strong>40</strong><span>из них проверены вторым человеком</span></div>
+          </div>
+          <div class="stack">
+            <div class="bullet">Совпадение: <strong>38/40</strong> по категории и <strong>29/40</strong> по качеству; разобраны 13 расхождений.</div>
+            <div class="bullet">В шестиклассной задаче правила дали <strong>31/40</strong>, вероятностная модель — <strong>23/40</strong>.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="gate-pill"><b>05</b> Ответы и решение</div>
+          <div class="stack" style="gap:1cqw">
+            <div class="bullet">Уточнили рубрику; отдельно проверяли маршрут, качество текста и критические ошибки.</div>
+            <div class="bullet">Сравнили правила, TF-IDF с логистической регрессией и RAG на тех же 40 вопросах.</div>
+            <div class="bullet">В слепой оценке 24 одинаковых вопросов: <strong>16 хороших ответов</strong> у facts-5 против <strong>2</strong> у показа первой статьи.</div>
+            <div class="bullet">Убрали выдачу случайной статьи при сбое; неподтверждённый ответ ведёт к специалисту.</div>
+          </div>
+        </div>
+      </div>
+      <div class="note-box"><p class="small"><strong>Главный урок:</strong> правильный маршрут и найденная статья не означают правильный ответ. Проверка текста стала отдельным условием выпуска.</p></div>
+      <div class="footer"><span class="fineprint">31/40 и 23/40 относятся к шести категориям; 16/24 и 2/24 — к качеству ответа на другой версии и наборе.</span><span class="num">4 / 5</span></div>
+    </section>
+
+    <section class="slide" data-note="Gate 6 — не фактическое масштабирование, а решение, что нужно для него. На публичной версии 10 два оценщика заполнили формы по 50 ответам: у обоих 50/50 «Хороший», маршруты совпали с фактическими, а критических ошибок, по подтверждению пользователя, не обнаружено. Но эти 50 вопросов после первого запуска многократно использовались при исправлениях, поэтому это регрессия, не независимая точность на новых клиентах. Версия 11 уже есть в GitHub, но в оценку версии 10 не входит и в публичное демо не была размещена на момент фиксации. Для учебной защиты решение Go. Для реального пилота No-Go до новой закрытой выборки после фиксации версии, защиты личных данных до внешней модели, настоящей очереди сотрудников и A/B по качеству и чистой экономике. Расчёт 3,6 млрд рублей относится к условным общим затратам, не измеренная выгода.">
+      <div class="header"><h2>Gate 6 — решение и путь к масштабированию</h2><span class="eyebrow">Scale</span></div>
+      <div class="metric-bar">
+        <div class="metric blue-bg"><strong>50 / 50</strong><span>«Хороший» по обеим формам для версии 10</span></div>
+        <div class="metric violet-bg"><strong>50 / 50</strong><span>маршруты совпали с оценками на знакомом наборе</span></div>
+        <div class="metric rose-bg"><strong>0</strong><span>критических ошибок по подтверждению оценщиков</span></div>
+      </div>
+      <p class="small subtle">Эти вопросы использовались при доработке после первого запуска. Результат показывает регрессию версии 10, а не независимое качество на новых обращениях.</p>
+      <div class="decision" style="flex:1">
+        <div class="panel go">
+          <div class="tag">GO</div>
+          <h3>Контролируемое учебное демо</h3>
+          <div class="stack">
+            <div class="bullet">Можно показать ответы по вымышленным условиям и безопасный переход к специалисту.</div>
+            <div class="bullet">Передача специалисту в чате — имитация, без настоящей очереди.</div>
+          </div>
+        </div>
+        <div class="panel hold">
+          <div class="tag">ПОКА NO-GO</div>
+          <h3>Клиентский пилот</h3>
+          <div class="stack">
+            <div class="bullet">Новая закрытая выборка после фиксации версии.</div>
+            <div class="bullet">Защита персональных данных до внешней модели и настоящий оператор.</div>
+            <div class="bullet">A/B по качеству, повторным контактам и чистой экономике.</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span class="fineprint">Оценена версия 10. Следующее изменение слито в GitHub, но в эту оценку и публичный выпуск не входит.</span><span class="num">5 / 5</span></div>
+    </section>
+
+    <div class="notes" id="notes" aria-live="polite"><h4>Заметки для выступления</h4><p></p></div>
+    <div class="controls" aria-label="Навигация"><button type="button" id="prev" aria-label="Предыдущий слайд">←</button><button type="button" id="next" aria-label="Следующий слайд">→</button><button type="button" id="toggle-notes" aria-label="Показать заметки">N</button></div>
+  </main>
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    const notes = document.querySelector('#notes');
+    let index = 0;
+    function show(next) {
+      index = Math.max(0, Math.min(slides.length - 1, next));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      document.querySelector('.deck').classList.toggle('is-cover', index === 0);
+      notes.querySelector('p').textContent = slides[index].dataset.note || '';
+      document.title = `${index + 1}/5 — Ассистент поддержки Демо-банка`;
+      history.replaceState(null, '', `#${index + 1}`);
+    }
+    document.querySelector('#prev').addEventListener('click', () => show(index - 1));
+    document.querySelector('#next').addEventListener('click', () => show(index + 1));
+    document.querySelector('#toggle-notes').addEventListener('click', () => notes.classList.toggle('open'));
+    document.addEventListener('keydown', (event) => {
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); show(index + 1); }
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); show(index - 1); }
+      if (event.key.toLowerCase() === 'n') notes.classList.toggle('open');
+      if (event.key.toLowerCase() === 'p') window.print();
+      if (event.key === 'Escape') notes.classList.remove('open');
+    });
+    show(Number(location.hash.slice(1)) - 1 || 0);
+  </script>
+</body>
+</html>
