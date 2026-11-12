@@ -17,7 +17,7 @@ prototype = RAGPrototype()
 requests_by_client: dict[str, deque[float]] = {}
 request_lock = Lock()
 HOURLY_LIMIT = int(os.environ.get("HOURLY_LIMIT", "200"))
-RELEASE = "2026-11-12-general-fixes-9"
+RELEASE = "2026-11-12-general-fixes-10"
 
 
 def over_limit(client: str) -> bool:
