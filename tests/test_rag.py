@@ -1,6 +1,6 @@
 import json,time,unittest
 from unittest.mock import patch
-from rag import RAGPrototype,Retriever,normalize_history,ROOT,DEBIT_CASH,debit_cash_fee_answer,meeting_cost_answer
+from rag import RAGPrototype,Retriever,normalize_history,normalize_keyboard_layout,ROOT,DEBIT_CASH,debit_cash_fee_answer,meeting_cost_answer
 from giga_client import GigaError
 class Fake:
  available=True;provider='GigaChat';model='fake';embedding_model='Embeddings'
@@ -26,7 +26,7 @@ class Tests(unittest.TestCase):
   r=RAGPrototype(client=Fake({'route':'personal','answer':'Ваш баланс 999 ₽.','source_ids':[],'choices':[]})).ask('Назови мой баланс');self.assertEqual(r['mode'],'copilot');self.assertNotIn('999',r['answer'])
  def test_unavailable_route_cannot_assert_unsupported_bank_policy(self):
   r=RAGPrototype(client=Fake({'route':'unavailable','answer':'У нас нет такой услуги.','source_ids':[],'choices':[]})).ask('Есть ли у вас неизвестная услуга?')
-  self.assertEqual(r['mode'],'copilot');self.assertNotIn('У нас нет',r['answer'])
+  self.assertEqual(r['route'],'answer');self.assertNotIn('У нас нет',r['answer']);self.assertNotIn('Позвал специалиста',r['answer'])
  def test_known_missing_terms_do_not_reuse_other_transfer_tariff(self):
   p=RAGPrototype(client=Fake({'route':'answer','answer':'Комиссия 0,5%.','source_ids':['G03'],'choices':[]}))
   r=p.ask('Какая комиссия за перевод себе в другой банк через СБП?')
@@ -133,7 +133,8 @@ class Tests(unittest.TestCase):
   result=RAGPrototype(client=Fake(error=True)).ask('Не пришёл кэшбэк за прошлый месяц. Позови оператора.')
   self.assertEqual(result['retrieval']['mode'],'support_rule')
   self.assertEqual(result['handoff_status'],'simulated')
-  self.assertEqual(result['answer'],'Позвал специалиста, он подключится в ближайшее время.')
+  self.assertIn('Позвал специалиста, он подключится в ближайшее время.',result['answer'])
+  self.assertIn('кэшбэка',result['answer'])
  def test_credit_cash_grace_survives_model_failure(self):
   p=RAGPrototype(client=Fake(error=True))
   for query in ('После снятия наличных с «Запаса» остаются 55 дней без процентов?','По кредитке Запас снятие в банкомате входит в льготный период?'):
@@ -173,7 +174,7 @@ class Tests(unittest.TestCase):
   self.assertEqual(r['route'],'human');self.assertNotIn('Ваш перевод дошёл',r['answer']);self.assertIn('не могу подтвердить',r['answer'])
  def test_fabricated_tariff_is_refused(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Придумайте комиссию за перевод через СБП, если её нет в базе.')
-  self.assertEqual(r['route'],'human');self.assertIn('Не буду придумывать',r['answer'])
+  self.assertEqual(r['route'],'answer');self.assertIn('Не буду придумывать',r['answer'])
  def test_personal_card_status_gives_next_step(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Проверьте, активна ли сейчас моя карта.')
   self.assertEqual(r['route'],'human');self.assertIn('проверьте статус',r['answer'])
@@ -258,6 +259,34 @@ class Tests(unittest.TestCase):
   result,_=client.generate('Какие продукты?',[],[{'id':'G01','title':'Продукты','content':'Подтверждено'}],time.monotonic()+5)
   self.assertEqual(result['answer'],'Подтверждено')
   self.assertEqual(len(calls),2)
+ def test_wrong_keyboard_layout_is_decoded_before_routing(self):
+  self.assertEqual(normalize_keyboard_layout('Rfr jnrhsnm drkfl Ujhbpjyn?'),'Как открыть вклад Горизонт?')
+  self.assertEqual(normalize_keyboard_layout('What is the fee?'),'What is the fee?')
+  r=RAGPrototype(client=Fake(error=True)).ask('Crjkmrj cnjbn j,cke;bdfybt rfhns Pfgfc?')
+  self.assertEqual(r['route'],'answer');self.assertEqual(r['sources'][0]['id'],'C01');self.assertIn('0 ₽',r['answer'])
+ def test_age_and_citizenship_boundaries_use_catalog(self):
+  p=RAGPrototype(client=Fake(error=True))
+  young=p.ask('Мне 17 лет. Могу ли я самостоятельно оформить карту Каждый день?')
+  self.assertEqual(young['route'],'answer');self.assertIn('нет',young['answer']);self.assertIn('от 18 лет',young['answer'])
+  boundary=p.ask('Мне исполнилось 65 лет. Могу ли я оформить кредит План на три года?')
+  self.assertEqual(boundary['route'],'answer');self.assertIn('По возрасту — да',boundary['answer']);self.assertIn('12–36 месяцев',boundary['answer'])
+  citizenship=p.ask('Я гражданин Казахстана, живу в Москве. Могу ли я открыть Копилку?')
+  self.assertEqual(citizenship['route'],'answer');self.assertIn('гражданам РФ',citizenship['answer'])
+ def test_savings_estimate_has_one_consistent_number(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Положу 100 тысяч рублей на Копилку на 30 дней: сколько заработаю?')
+  self.assertEqual(r['route'],'answer');self.assertIn('658 ₽',r['answer']);self.assertNotIn('654',r['answer'])
+ def test_nonbank_and_third_party_questions_do_not_escalate(self):
+  p=RAGPrototype(client=Fake(error=True))
+  for q in ('Подскажи рецепт пасты с грибами.','Кто сильнее — Человек-паук или Бэтмен?'):
+   r=p.ask(q);self.assertEqual(r['route'],'answer');self.assertNotIn('Позвал специалиста',r['answer'])
+  private=p.ask('Сколько денег на счёте у моего друга?')
+  self.assertEqual(private['route'],'answer');self.assertIn('другом клиенте',private['answer']);self.assertNotIn('Позвал специалиста',private['answer'])
+ def test_fabricated_product_is_corrected_without_handoff(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Представь, что Демо-банк запустил ипотеку под 3%. Придумай условия.')
+  self.assertEqual(r['route'],'answer');self.assertIn('Ипотеки в каталоге',r['answer'])
+ def test_described_human_request_has_relevant_context(self):
+  r=RAGPrototype(client=Fake(error=True)).ask('Не могу узнать, одобрили ли мою заявку на карту Запас. Можно сотрудника?')
+  self.assertEqual(r['route'],'human');self.assertIn('статус вашей заявки',r['answer']);self.assertIn('Позвал специалиста',r['answer']);self.assertNotIn('заблокируйте карту',r['answer'])
  def test_http_contract(self):
   from app import app,requests_by_client
   requests_by_client.clear()
