@@ -15,7 +15,18 @@ CARD_LOSS=re.compile(r'(?:карт.{0,40}(?:потер|украд|пропал|�
 CREDENTIAL_RISK=re.compile(r'(?:кто-то|посторон|незнаком|мошенн).{0,45}(?:парол|пин|cvv|код)|(?:парол|пин|cvv|код).{0,45}(?:знает|узнал|передал|назвал|сообщил|ут[её]к|посторон)',re.I)
 GREETING=re.compile(r'^(?:привет(?:ствую)?|здравствуйте|здравствуй(?:те)?|доброе утро|добрый день|добрый вечер)[\s!?.]*$',re.I)
 HUMAN_ROLE=r'(?:сотрудник\w*|специалист\w*|оператор\w*|консультант\w*|менеджер\w*|жив\w*\s+человек\w*)'
-HUMAN_REQUEST=re.compile(r'(?:соедин\w*|свяж\w*|подключи\w*|позов\w*|пригласи\w*|переключи\w*|хочу|нужен|нужна|дайте)\b.{0,55}\b'+HUMAN_ROLE,re.I)
+HUMAN_REQUEST=re.compile(r'(?:соедин\w*|свяж\w*|подключи\w*|позов\w*|пригласи\w*|переключи\w*|хочу|нужен|нужна|дайте|можно)\b.{0,55}\b'+HUMAN_ROLE,re.I)
+EN_KEYS="qwertyuiop[]asdfghjkl;'zxcvbnm,."
+RU_KEYS='йцукенгшщзхъфывапролджэячсмитьбю'
+KEYBOARD_MAP=dict(zip(EN_KEYS,RU_KEYS))
+KEYBOARD_MAP.update({en.upper():ru.upper() for en,ru in zip(EN_KEYS,RU_KEYS) if en.isalpha()})
+KEYBOARD_TRANSLATION=str.maketrans(KEYBOARD_MAP)
+
+def normalize_keyboard_layout(query):
+ if re.search(r'[а-яё]',query,re.I) or len(re.findall(r'[a-z]',query,re.I))<5:return query
+ decoded=query.translate(KEYBOARD_TRANSLATION)
+ if re.search(r'\b(?:как|где|сколько|можно)\b',decoded,re.I) and re.search(r'карт|вклад|деньг|баланс|комисс|оформ|откры|стои',decoded,re.I):return decoded
+ return query
 
 def risk_kind(query):
  if CREDENTIAL_RISK.search(query):return 'credentials'
@@ -47,7 +58,58 @@ def needs_context(query,history):
  return bool(re.search(r'\b(оно|она|он|е[её]|это|этот|эту|этой|него|не[её]|ней|там)\b|\b(?:сколько|долго).{0,20}ждать\b',query,re.I))
 
 def outside_bank_scope(query):
- return bool(re.search(r'\bперевед(?:ите|и)\b.{0,45}\b(?:фраз[уы]|предложени[ея]|текст)\b.{0,45}\bна\s+[а-яё]+|посовет.{0,30}фильм|\b(?:погод|температур).{0,60}\b(?:завтра|сегодня|казан)',query,re.I))
+ if re.search(r'карт|сч[её]т|вклад|кредит|банк|перевод|кэшб[еэ]к|комисс',query,re.I):return False
+ return bool(re.search(r'\bперевед(?:ите|и)\b.{0,45}\b(?:фраз[уы]|предложени[ея]|текст)\b.{0,45}\bна\s+[а-яё]+|посовет.{0,30}фильм|рецепт|приготов|кулинар|кто\s+сильнее|супергер|\b(?:погод|температур).{0,60}\b(?:завтра|сегодня|выходн|казан)',query,re.I))
+
+def eligibility_question(query):
+ if not re.search(r'могу|может|оформ|открыть|заказ|пользоваться|доступ',query,re.I):return None
+ names=(('каждый день','debit','D02'),('запас','credit','C02'),('старт','junior','J01'),('копилк','savings','S02'),('горизонт','deposit','V02'),('план','loan','L02'))
+ match=next(((product,source) for name,product,source in names if name in query.lower()),None)
+ if not match:return None
+ product,source=match;policy=CATALOG['products'][product]
+ citizen=re.search(r'граждан(?:ин|ка)\s+([а-яё]+)',query,re.I)
+ if citizen and citizen.group(1).lower() not in ('рф','россии','российской') and product!='junior':
+  return (f'По указанным условиям — нет. «{policy["name"]}» доступен гражданам РФ от {policy["age"]} лет. Постоянное проживание и работа не заменяют требование о гражданстве.',[source])
+ age_match=re.search(r'\b(?:мне|реб[её]нку|сыну|дочери).{0,35}?\b(\d{1,2})\s*лет\b',query,re.I)
+ if not age_match:return None
+ age=int(age_match.group(1));minimum=policy['age'];maximum=policy.get('age_max')
+ limits=f'от {minimum} до {maximum} лет включительно' if maximum else f'от {minimum} лет'
+ if age<minimum or (maximum is not None and age>maximum):
+  answer=f'По возрасту — нет: «{policy["name"]}» доступен {limits}. Вам указано {age} лет.'
+  if product=='junior':answer+=' Порядок прекращения действующей карты после достижения предельного возраста в материалах не указан.'
+  return answer,[source]
+ answer=f'По возрасту — да: {age} лет входит в диапазон {limits} для «{policy["name"]}».'
+ sources=[source]
+ if product=='junior':answer+=' Заявку подаёт родитель или законный представитель с дебетовой картой Демо-банка.';sources.append('J02')
+ elif product in ('credit','loan'):
+  answer+=' Для заявки также нужны гражданство РФ и постоянный доход; одобрение не гарантировано.'
+  if product=='loan' and re.search(r'три\s+года|3\s+года',query,re.I):answer+=' Срок 3 года входит в допустимые 12–36 месяцев.';sources.append('L03')
+ return answer,sources
+
+def savings_income_answer(query):
+ if not re.search(r'копилк',query,re.I) or not re.search(r'сколько|заработ|доход|процент',query,re.I):return None
+ amount=rubles(query);days=re.search(r'\b(\d{1,3})\s*(?:дн(?:ей|я|ь)|суток)\b',query,re.I)
+ if amount is None or not days:return None
+ period=int(days.group(1))
+ if period<1 or period>366:return None
+ rate=Decimal(str(CATALOG['products']['savings']['rate_pct']))
+ income=(Decimal(amount)*rate*Decimal(period)/Decimal(36500)).quantize(Decimal('1'),rounding=ROUND_HALF_UP)
+ return f'Если на «Копилке» все {period} дней будет {ruble_text(amount)} ₽ и ставка останется {rate}% годовых, ориентир — около {ruble_text(int(income))} ₽ процентов. Точная сумма зависит от дат, ежедневного остатка и действующей ставки; проценты выплачиваются в последний день месяца.'
+
+def card_service_answer(query):
+ if not re.search(r'обслужив',query,re.I) or not re.search(r'сколько|стои|цен|плат',query,re.I):return None
+ for name,product,source in (('каждый день','debit','D01'),('запас','credit','C01'),('старт','junior','J01')):
+  if name in query.lower():return f'Обслуживание карты «{CATALOG["products"][product]["name"].removeprefix("Карта ")}» — {CATALOG["products"][product]["service_month"]} ₽ в месяц.',source
+ return None
+
+def asks_balance_location(query):
+ return bool(re.search(r'где|как',query,re.I) and re.search(r'посмотр|увид|узна',query,re.I) and re.search(r'баланс|остат',query,re.I) and re.search(r'карт|сч[её]т',query,re.I))
+
+def asks_third_party_data(query):
+ return bool(re.search(r'\b(?:друг[ауе]?|жена|жены|жене|муж[ауе]?|брат[ауе]?|сестр[уыа]?|коллег[аиуы])\b',query,re.I) and re.search(r'баланс|сколько денег|сч[её]т|покупк|операци|задолженн|просроч|кредитн.{0,12}лимит|сколько кредит',query,re.I))
+
+def asks_false_personal_confirmation(query):
+ return bool(re.search(r'скажи|подтверди|назови|покажи',query,re.I) and re.search(r'одобр|подтвержд[её]н|точн.{0,15}дат.{0,20}достав',query,re.I) and re.search(r'даже если|не можешь проверить|не говори|придум',query,re.I))
 
 def asks_loan_early_repayment(query):
  return bool(re.search(r'\bплан\b|кредит налич|потребительск',query,re.I)) and bool(re.search(r'закры|погас',query,re.I)) and bool(re.search(r'раньше|досроч|срок',query,re.I))
@@ -63,7 +125,19 @@ def asks_personal_card_status(query):
  return bool(re.search(r'\bмо[йяюеиё]\b|\bмоего\b|\bсво[йяюеи]\b',query,re.I) and re.search(r'карт',query,re.I) and re.search(r'проверь|активн|статус',query,re.I) and not re.search(r'как\s+активир',query,re.I))
 
 def asks_fabricated_terms(query):
- return bool(re.search(r'придум|выдум|наугад',query,re.I) and re.search(r'комисс|тариф|ставк|услов',query,re.I))
+ return bool(re.search(r'придум|выдум|наугад|представь',query,re.I) and re.search(r'комисс|тариф|ставк|услов|ипотек|достав|дат[ыуе]',query,re.I))
+
+def fabrication_refusal(query):
+ if re.search(r'ипотек',query,re.I):return 'Ипотеки в каталоге Демо-банка нет. Я не стану представлять вымышленные условия как действующие.',['G01']
+ if re.search(r'достав|дат[ыуе]',query,re.I):return 'Точную дату доставки вашей карты я не вижу и не могу подтвердить. Для карты «Каждый день» указан общий срок 2–5 рабочих дней после подтверждения заявки; личный статус проверьте в приложении.',['D02','G07']
+ return 'Не буду придумывать комиссию, тариф или другие условия, которых нет в подтверждённых материалах. Проверьте условия операции до её подтверждения.',['G03','G07']
+
+def human_issue_prefix(query):
+ if re.search(r'кэшб[еэ]к',query,re.I):return 'Я не вижу причину отсутствия кэшбэка по вашей карте. Проверьте начисления в приложении.'
+ if re.search(r'отсроч|денег нет|нечем плат',query,re.I):return 'Я не могу изменить график кредита или обещать отсрочку; обстоятельства платежа нужно обсудить через поддержку.'
+ if re.search(r'ошиб.{0,35}перевод|перевод.{0,35}ошиб|отмен.{0,35}перевод',query,re.I):return 'Я не могу отменить перевод или проверить его статус. Сохраните сведения об операции и срочно обратитесь в поддержку.'
+ if re.search(r'заявк|одобр',query,re.I):return 'Я не вижу статус вашей заявки. Проверьте его в приложении.'
+ return ''
 
 def asks_cash_over_free_limit(query):
  mentions=product_mentions(query)
@@ -259,8 +333,10 @@ class RAGPrototype:
    answer='Если пароль, ПИН или код стал известен постороннему, прекратите общение с ним, смените пароль через официальный канал и срочно обратитесь в поддержку через «Помощь» → «Чат» в приложении. Не сообщайте новые коды или пароль в этом чате. Здесь я не могу защитить ваш доступ.'
   elif kind=='card_loss':
    answer='Если карта потеряна или украдена, сразу откройте её в приложении и выберите «Настройки» → «Заблокировать», затем обратитесь в поддержку через «Помощь» → «Чат». В этом чате карта не блокируется.'
+  elif re.search(r'спис|мошенн|не\s+(?:узнаю|совершал|делал|проводил|подтверждал|покупал)',query,re.I):
+   answer='Я не могу проверить это списание. Сразу заблокируйте карту в приложении и обратитесь в поддержку через «Помощь» → «Чат». Не сообщайте ПИН, CVV, пароль и коды из СМС.'
   else:
-   answer='Я не могу выполнить действие или проверить личную операцию в этом чате. Если вы заметили неизвестное списание или подозреваете мошенничество, заблокируйте карту в приложении и обратитесь в поддержку через «Помощь» → «Чат». Не сообщайте ПИН, CVV, пароль и коды из СМС.'
+   answer='Я не могу выполнить действие или проверить личную заявку или операцию в этом чате. Проверьте её статус в приложении.'
   return self.specialist(query,history,answer,'Инцидент или запрос действия требует защищённого канала.',sources,'Нужно проверить обстоятельства обращения через защищённый канал. Действия со счётом не выполнены.')
  def safe_fallback(self,query,history,reason):
   support=self.retriever.by_id['G06']
@@ -269,24 +345,38 @@ class RAGPrototype:
   support=self.retriever.by_id['G06']
   return self.specialist(query,history,'Я не вижу вашу конкретную операцию, заявку или счёт. Проверьте нужный статус в приложении.','Для ответа нужны личные сведения, недоступные помощнику.',[support])
  def unavailable_fallback(self,query,history):
-  support=self.retriever.by_id['G06']
-  return self.specialist(query,history,'Точного условия по этому вопросу в подтверждённых материалах нет. Не буду придумывать комиссию или тариф. Проверьте условия операции до её подтверждения.','Нужного условия нет в подтверждённых материалах.',[support])
+  return self.result('Точного условия по этому вопросу в подтверждённых материалах нет. Не буду придумывать комиссию или тариф. Проверьте условия операции до её подтверждения.',sources=[self.retriever.by_id['G07']],reason='Нужного условия нет в подтверждённых материалах.',route='answer')
  def clarification_handoff(self,query,history):
   return self.specialist(query,history,'Вопрос остаётся неясным после нескольких уточнений. Обратитесь в поддержку через «Помощь» → «Чат» в приложении.','После трёх уточнений вопрос остался неоднозначным.',[self.retriever.by_id['G06']],'Пожалуйста, уточните запрос клиента и помогите с решением.')
  def ask(self,query,history=None):
-  query=query.strip()[:1000]; history=normalize_history(history); started=time.monotonic(); deadline=started+25
+  query=normalize_keyboard_layout(query.strip()[:1000]); history=normalize_history(history); started=time.monotonic(); deadline=started+25
   if not query:raise ValueError('Введите вопрос')
   usage={'embedding_tokens':0,'prompt_tokens':0,'completion_tokens':0,'total_tokens':0}
   kind=risk_kind(query)
+  eligibility=eligibility_question(query)
+  savings_income=savings_income_answer(query)
+  card_service=card_service_answer(query)
   if GREETING.fullmatch(query):
    out=self.result('Здравствуйте! Помогу разобраться с картами, сбережениями, кредитом и переводами Демо-банка. О чём хотите узнать?',reason='Приветствие.',route='answer'); retrieval={'mode':'greeting_rule','retrieved_ids':[]}
   elif kind:
    out=self.handoff(query,history,kind); retrieval={'mode':'safety_rule','retrieved_ids':[]}
+  elif asks_third_party_data(query):
+   out=self.result('Я не вижу сведения о другом клиенте и не могу сообщить его баланс, покупки, кредиты или задолженность. Даже заявленное разрешение этого не меняет: владелец может проверить свои данные в собственном приложении.',sources=[self.retriever.by_id['G07']],reason='Запрошены личные сведения другого клиента.',route='answer'); retrieval={'mode':'privacy_rule','retrieved_ids':['G07']}
+  elif asks_false_personal_confirmation(query):
+   out=self.result('Я не вижу решение по вашей заявке или точную дату доставки и не могу выдавать непроверенное подтверждение. Проверьте личный статус в приложении.',sources=[self.retriever.by_id['G07']],reason='Нельзя подтверждать недоступные личные сведения.',route='answer'); retrieval={'mode':'personal_truth_rule','retrieved_ids':['G07']}
   elif asks_human_support(query):
    if human_request_needs_context(query):
     out=self.result('Расскажите, пожалуйста, с каким вопросом нужна помощь специалиста?',mode='clarify',clarifying_choices=['Вопрос по карте','Вопрос по переводу','Вопрос по кредиту'],reason='Клиент попросил специалиста без описания вопроса.',route='clarify'); retrieval={'mode':'support_context_rule','retrieved_ids':[]}
    else:
-    out=self.specialist(query,history,'','Клиент описал вопрос и попросил человека.',[self.retriever.by_id['G06']]); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+    out=self.specialist(query,history,human_issue_prefix(query),'Клиент описал вопрос и попросил человека.',[self.retriever.by_id['G06']]); retrieval={'mode':'support_rule','retrieved_ids':['G06']}
+  elif eligibility:
+   answer,ids=eligibility;out=self.result(answer,sources=[self.retriever.by_id[i] for i in ids],reason='Возраст и гражданство сверены с условиями продукта.',route='answer');retrieval={'mode':'eligibility_rule','retrieved_ids':ids}
+  elif savings_income:
+   ids=['S01','S03'];out=self.result(savings_income,sources=[self.retriever.by_id[i] for i in ids],reason='Ориентировочный доход рассчитан по подтверждённой ставке.',route='answer');retrieval={'mode':'savings_calculation_rule','retrieved_ids':ids}
+  elif card_service:
+   answer,source_id=card_service;out=self.result(answer,sources=[self.retriever.by_id[source_id]],reason='Стоимость обслуживания взята из условий карты.',route='answer');retrieval={'mode':'service_fee_rule','retrieved_ids':[source_id]}
+  elif asks_balance_location(query):
+   out=self.result('Баланс виден на экране нужной карты или счёта в приложении. В этом чате я не вижу ваш остаток.',sources=[self.retriever.by_id['G04']],reason='Порядок просмотра баланса описан в базе знаний.',route='answer');retrieval={'mode':'balance_location_rule','retrieved_ids':['G04']}
   elif needs_context(query,history):
    answer='Уточните, пожалуйста, что именно должно быть готово: карта, заявка или перевод?' if re.search(r'готов',query,re.I) else 'Уточните, пожалуйста, о каком продукте или действии вы хотите узнать подробнее?'
    out=self.result(answer,mode='clarify',clarifying_choices=['Карта','Заявка','Перевод'] if re.search(r'готов',query,re.I) else ['Карта','Счёт или вклад','Кредит'],reason='В вопросе нет названия предмета; нужен контекст.',route='clarify'); retrieval={'mode':'context_rule','retrieved_ids':[]}
@@ -294,7 +384,7 @@ class RAGPrototype:
    answer='Я помогаю с продуктами и обслуживанием Демо-банка. Переводить фразы на другие языки не могу.' if re.search(r'перевед',query,re.I) else 'Я помогаю с продуктами и обслуживанием Демо-банка. С этим вопросом не помогу.'
    out=self.result(answer,sources=[self.retriever.by_id['G01']],reason='Вопрос вне области банковской помощи.',route='answer'); retrieval={'mode':'scope_rule','retrieved_ids':['G01']}
   elif asks_fabricated_terms(query):
-   out=self.specialist(query,history,'Не буду придумывать комиссию или условие, которого нет в подтверждённых материалах. Уточните действующие условия через «Помощь» → «Чат» в приложении.','Запрошено неподтверждённое условие.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'terms_rule','retrieved_ids':['G03','G06']}
+   answer,ids=fabrication_refusal(query);out=self.result(answer,sources=[self.retriever.by_id[i] for i in ids],reason='Запрошено неподтверждённое условие.',route='answer');retrieval={'mode':'terms_rule','retrieved_ids':ids}
   elif asks_personal_transfer_status(query):
    out=self.specialist(query,history,'Я не вижу ваш перевод и не могу подтвердить его зачисление. Проверьте сведения о переводе в приложении; если нужно подтвердить статус, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки конкретного перевода нужны личные данные.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G03','G06']}
   elif asks_personal_card_status(query):
@@ -344,7 +434,8 @@ class RAGPrototype:
     ids=data['source_ids']; allowed={a['id']:a for a in docs}
     if any(i not in allowed for i in ids) or (data['route']=='answer' and not ids):raise GigaError('invalid_citations')
     sources=[allowed[i] for i in dict.fromkeys(ids)]
-    if data['route'] in ('risk','human'):out=self.handoff(query,history,kind or 'other')
+    if data['route']=='risk':out=self.handoff(query,history,kind or 'other')
+    elif data['route']=='human':out=self.unavailable_fallback(query,history)
     elif data['route'] in ('clarify','unavailable') and clarification_streak(history)>=3:out=self.clarification_handoff(query,history)
     elif data['route']=='unavailable':out=self.unavailable_fallback(query,history)
     elif data['route']=='personal':out=self.personal_fallback(query,history)
