@@ -106,7 +106,7 @@ def asks_balance_location(query):
  return bool(re.search(r'где|как',query,re.I) and re.search(r'посмотр|увид|узна',query,re.I) and re.search(r'баланс|остат',query,re.I) and re.search(r'карт|сч[её]т',query,re.I))
 
 def asks_third_party_data(query):
- return bool(re.search(r'\b(?:друг[ауе]?|жена|жены|жене|муж[ауе]?|брат[ауе]?|сестр[уыа]?|коллег[аиуы])\b',query,re.I) and re.search(r'баланс|сколько денег|сч[её]т|покупк|операци|задолженн|просроч|кредитн.{0,12}лимит|сколько кредит',query,re.I))
+ return bool(re.search(r'\b(?:друг[ауе]?|жена|жены|жене|муж[ауе]?|брат[ауе]?|сестр[уыа]?|коллег[аиуы])\b',query,re.I) and re.search(r'баланс|сколько денег|сч[её]т|покуп[а-яё]*|операци|задолженн|просроч|кредитн.{0,12}лимит|сколько кредит',query,re.I))
 
 def asks_false_personal_confirmation(query):
  return bool(re.search(r'скажи|подтверди|назови|покажи',query,re.I) and re.search(r'одобр|подтвержд[её]н|точн.{0,15}дат.{0,20}достав',query,re.I) and re.search(r'даже если|не можешь проверить|не говори|придум',query,re.I))
@@ -377,14 +377,14 @@ class RAGPrototype:
    answer,source_id=card_service;out=self.result(answer,sources=[self.retriever.by_id[source_id]],reason='Стоимость обслуживания взята из условий карты.',route='answer');retrieval={'mode':'service_fee_rule','retrieved_ids':[source_id]}
   elif asks_balance_location(query):
    out=self.result('Баланс виден на экране нужной карты или счёта в приложении. В этом чате я не вижу ваш остаток.',sources=[self.retriever.by_id['G04']],reason='Порядок просмотра баланса описан в базе знаний.',route='answer');retrieval={'mode':'balance_location_rule','retrieved_ids':['G04']}
+  elif asks_fabricated_terms(query):
+   answer,ids=fabrication_refusal(query);out=self.result(answer,sources=[self.retriever.by_id[i] for i in ids],reason='Запрошено неподтверждённое условие.',route='answer');retrieval={'mode':'terms_rule','retrieved_ids':ids}
   elif needs_context(query,history):
    answer='Уточните, пожалуйста, что именно должно быть готово: карта, заявка или перевод?' if re.search(r'готов',query,re.I) else 'Уточните, пожалуйста, о каком продукте или действии вы хотите узнать подробнее?'
    out=self.result(answer,mode='clarify',clarifying_choices=['Карта','Заявка','Перевод'] if re.search(r'готов',query,re.I) else ['Карта','Счёт или вклад','Кредит'],reason='В вопросе нет названия предмета; нужен контекст.',route='clarify'); retrieval={'mode':'context_rule','retrieved_ids':[]}
   elif outside_bank_scope(query):
    answer='Я помогаю с продуктами и обслуживанием Демо-банка. Переводить фразы на другие языки не могу.' if re.search(r'перевед',query,re.I) else 'Я помогаю с продуктами и обслуживанием Демо-банка. С этим вопросом не помогу.'
    out=self.result(answer,sources=[self.retriever.by_id['G01']],reason='Вопрос вне области банковской помощи.',route='answer'); retrieval={'mode':'scope_rule','retrieved_ids':['G01']}
-  elif asks_fabricated_terms(query):
-   answer,ids=fabrication_refusal(query);out=self.result(answer,sources=[self.retriever.by_id[i] for i in ids],reason='Запрошено неподтверждённое условие.',route='answer');retrieval={'mode':'terms_rule','retrieved_ids':ids}
   elif asks_personal_transfer_status(query):
    out=self.specialist(query,history,'Я не вижу ваш перевод и не могу подтвердить его зачисление. Проверьте сведения о переводе в приложении; если нужно подтвердить статус, обратитесь в поддержку через «Помощь» → «Чат».','Для проверки конкретного перевода нужны личные данные.',[self.retriever.by_id['G03'],self.retriever.by_id['G06']]); retrieval={'mode':'personal_rule','retrieved_ids':['G03','G06']}
   elif asks_personal_card_status(query):
