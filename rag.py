@@ -96,6 +96,25 @@ def savings_income_answer(query):
  income=(Decimal(amount)*rate*Decimal(period)/Decimal(36500)).quantize(Decimal('1'),rounding=ROUND_HALF_UP)
  return f'Если на «Копилке» все {period} дней будет {ruble_text(amount)} ₽ и ставка останется {rate}% годовых, ориентир — около {ruble_text(int(income))} ₽ процентов. Точная сумма зависит от дат, ежедневного остатка и действующей ставки; проценты выплачиваются в последний день месяца.'
 
+def deposit_opening_amount_answer(query):
+ if 'горизонт' not in query.lower() or not re.search(r'откры|оформ',query,re.I):return None
+ amount=rubles(query)
+ minimum=CATALOG['products']['deposit']['min_amount']
+ if amount is None or amount>=minimum:return None
+ return f'Нет. Вклад «Горизонт» нельзя открыть на {ruble_text(amount)} ₽: минимальная сумма открытия — {ruble_text(minimum)} ₽. Пополнение после открытия не предусмотрено.'
+
+def loan_payment_estimate(query):
+ if not re.search(r'\bплан\b',query,re.I) or not re.search(r'кредит|плат[её]ж',query,re.I) or not re.search(r'сколько|плат[её]ж',query,re.I):return None
+ amount=rubles(query)
+ term=re.search(r'\b(\d{1,2})\s*месяц(?:ев|а)?\b|\b(\d|один|два|три)\s*года?\b',query,re.I)
+ if amount is None or not term:return None
+ months=int(term.group(1)) if term.group(1) else {'один':1,'два':2,'три':3}.get(term.group(2).lower(),int(term.group(2)) if term.group(2).isdigit() else 0)*12
+ policy=CATALOG['products']['loan']
+ if not(policy['amount_min']<=amount<=policy['amount_max'] and policy['term_min_months']<=months<=policy['term_max_months']):return None
+ monthly_rate=Decimal(str(policy['rate_pct']))/Decimal(1200)
+ payment=(Decimal(amount)*monthly_rate/(1-(1+monthly_rate)**(-months))).quantize(Decimal('1'),rounding=ROUND_HALF_UP)
+ return f'При сумме {ruble_text(amount)} ₽, сроке {months} месяцев и ставке {policy["rate_pct"]}% годовых ориентировочный аннуитетный платёж — {ruble_text(int(payment))} ₽ в месяц. Точный график смотрите в индивидуальных условиях после рассмотрения заявки.'
+
 def card_service_answer(query):
  if not re.search(r'обслужив',query,re.I) or not re.search(r'сколько|стои|цен|плат',query,re.I):return None
  for name,product,source in (('каждый день','debit','D01'),('запас','credit','C01'),('старт','junior','J01')):
@@ -365,6 +384,8 @@ class RAGPrototype:
   kind=risk_kind(query)
   eligibility=eligibility_question(query)
   savings_income=savings_income_answer(query)
+  deposit_opening=deposit_opening_amount_answer(query)
+  loan_payment=loan_payment_estimate(query)
   card_service=card_service_answer(query)
   cashback_transfer=cashback_transfer_answer(query)
   travel_answer=unconfirmed_travel_answer(query)
@@ -385,6 +406,10 @@ class RAGPrototype:
    answer,ids=eligibility;out=self.result(answer,sources=[self.retriever.by_id[i] for i in ids],reason='Возраст и гражданство сверены с условиями продукта.',route='answer');retrieval={'mode':'eligibility_rule','retrieved_ids':ids}
   elif savings_income:
    ids=['S01','S03'];out=self.result(savings_income,sources=[self.retriever.by_id[i] for i in ids],reason='Ориентировочный доход рассчитан по подтверждённой ставке.',route='answer');retrieval={'mode':'savings_calculation_rule','retrieved_ids':ids}
+  elif deposit_opening:
+   out=self.result(deposit_opening,sources=[self.retriever.by_id['V01']],reason='Минимальная сумма и пополнение сверены с условиями вклада.',route='answer');retrieval={'mode':'deposit_amount_rule','retrieved_ids':['V01']}
+  elif loan_payment:
+   out=self.result(loan_payment,sources=[self.retriever.by_id['L01'],self.retriever.by_id['L03']],reason='Ориентировочный аннуитетный платёж рассчитан по каталогу.',route='answer');retrieval={'mode':'loan_payment_rule','retrieved_ids':['L01','L03']}
   elif card_service:
    answer,source_id=card_service;out=self.result(answer,sources=[self.retriever.by_id[source_id]],reason='Стоимость обслуживания взята из условий карты.',route='answer');retrieval={'mode':'service_fee_rule','retrieved_ids':[source_id]}
   elif cashback_transfer:

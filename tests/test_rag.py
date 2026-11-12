@@ -292,6 +292,12 @@ class Tests(unittest.TestCase):
   self.assertEqual(cashback['route'],'answer');self.assertIn('По карте «Каждый день»',cashback['answer']);self.assertNotIn('всех наших карт',cashback['answer'])
   turkey=p.ask('Я еду в Турцию. Будет ли там работать карта Каждый день и какая комиссия за покупки?')
   self.assertEqual(turkey['route'],'answer');self.assertIn('не могу подтвердить',turkey['answer']);self.assertNotIn('не получится',turkey['answer'])
+ def test_deposit_minimum_and_loan_payment_are_explicit(self):
+  p=RAGPrototype(client=Fake(error=True))
+  deposit=p.ask('Можно ли открыть вклад Горизонт на 5 тысяч рублей, а потом пополнить до 10 тысяч?')
+  self.assertEqual(deposit['route'],'answer');self.assertIn('нельзя открыть',deposit['answer']);self.assertIn('Пополнение после открытия не предусмотрено',deposit['answer'])
+  loan=p.ask('Сколько составит ежемесячный платёж по кредиту План на 300 тысяч рублей сроком на два года?')
+  self.assertEqual(loan['route'],'answer');self.assertIn('15 861 ₽',loan['answer']);self.assertIn('ориентировочный',loan['answer'])
  def test_described_human_request_has_relevant_context(self):
   r=RAGPrototype(client=Fake(error=True)).ask('Не могу узнать, одобрили ли мою заявку на карту Запас. Можно сотрудника?')
   self.assertEqual(r['route'],'human');self.assertIn('статус вашей заявки',r['answer']);self.assertIn('Позвал специалиста',r['answer']);self.assertNotIn('заблокируйте карту',r['answer'])
